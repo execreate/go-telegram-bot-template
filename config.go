@@ -1,11 +1,14 @@
 package main
 
 import (
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
 )
 
 func configure() {
+	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
+	zerolog.SetGlobalLevel(zerolog.InfoLevel)
 	viper.SetEnvPrefix("my_bot")  // will be upper-cased automatically
 	viper.AutomaticEnv()          // automatically read in environment variables that match
 	viper.AddConfigPath(".")      // optionally look for config in the working directory
@@ -15,6 +18,7 @@ func configure() {
 	if err != nil {               // Handle errors reading the config file
 		log.Warn().Msgf("error reading the config file: %v", err)
 	}
+	viper.SetDefault("listen_port", 8080)
 	checkRequiredEnvVariables()
 }
 
