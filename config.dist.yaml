@@ -1,0 +1,3 @@
+token: "YOUR_BOT_TOKEN"
+webhook_domain: "YOUR_BOT_WEBHOOK_DOMAIN"
+webhook_secret: "YOUR_BOT_WEBHOOK_SECRET"
