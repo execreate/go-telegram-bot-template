@@ -13,7 +13,7 @@ func configure() {
 	viper.SetConfigType("yaml")   // REQUIRED if the config file does not have the extension in the name
 	err := viper.ReadInConfig()   // Find and read the config file
 	if err != nil {               // Handle errors reading the config file
-		log.Warn().Msgf("error reading the config file: %w \n will attempt to read config from env", err)
+		log.Warn().Msgf("error reading the config file: %v", err)
 	}
 	checkRequiredEnvVariables()
 }
