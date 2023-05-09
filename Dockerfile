@@ -1,4 +1,4 @@
-FROM golang:1.18 as build
+FROM golang:1.20 as build
 
 WORKDIR /app
 COPY go.mod /app/go.mod
