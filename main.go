@@ -1,12 +1,10 @@
 package main
 
 import (
-	"fmt"
-	"github.com/PaulSonOfLars/gotgbot/v2"
-	"github.com/PaulSonOfLars/gotgbot/v2/ext"
 	"github.com/PaulSonOfLars/gotgbot/v2/ext/handlers"
 	"github.com/PaulSonOfLars/gotgbot/v2/ext/handlers/filters/message"
 	"my-telegram-bot/pkg/bot"
+	"my-telegram-bot/pkg/processors"
 )
 
 // This bot repeats everything you say and uses webhooks instead of long polling.
@@ -23,16 +21,7 @@ func main() {
 	myBot := bot.NewBot()
 
 	// Add echo handler to reply to all text messages.
-	myBot.AddHandler(handlers.NewMessage(message.Text, echo))
+	myBot.AddHandler(handlers.NewMessage(message.Text, processors.Echo))
 
 	myBot.Start()
-}
-
-// echo replies to a messages with its own contents.
-func echo(b *gotgbot.Bot, ctx *ext.Context) error {
-	_, err := ctx.EffectiveMessage.Reply(b, ctx.EffectiveMessage.Text, nil)
-	if err != nil {
-		return fmt.Errorf("failed to echo message: %w", err)
-	}
-	return nil
 }

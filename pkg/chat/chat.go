@@ -1,18 +1,28 @@
 package chat
 
 import (
+	"context"
 	"golang.org/x/time/rate"
 	"time"
 )
 
 type Chat struct {
-	ChatId  int64
-	limiter *rate.Limiter
+	limiter  *rate.Limiter
+	lastUsed time.Time
 }
 
-func NewChat(chatId int64) *Chat {
+func NewChat() *Chat {
 	return &Chat{
-		ChatId:  chatId,
-		limiter: rate.NewLimiter(rate.Every(time.Second), 2),
+		limiter:  rate.NewLimiter(rate.Every(time.Second), 1),
+		lastUsed: time.Now(),
 	}
+}
+
+func (c *Chat) IsStale() bool {
+	return time.Since(c.lastUsed) > time.Hour*24
+}
+
+func (c *Chat) WaitLimiter(ctx context.Context) error {
+	c.lastUsed = time.Now()
+	return c.limiter.Wait(ctx)
 }
