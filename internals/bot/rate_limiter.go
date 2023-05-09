@@ -6,7 +6,7 @@ import (
 	"github.com/PaulSonOfLars/gotgbot/v2"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/time/rate"
-	"my-telegram-bot/pkg/chat"
+	"my-telegram-bot/internals/chat"
 	"strconv"
 	"sync"
 	"time"

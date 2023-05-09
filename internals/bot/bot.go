@@ -5,19 +5,30 @@ import (
 	"github.com/PaulSonOfLars/gotgbot/v2"
 	"github.com/PaulSonOfLars/gotgbot/v2/ext"
 	"github.com/rs/zerolog/log"
-	"github.com/spf13/viper"
 	"net/http"
 	"time"
 )
+
+type Config interface {
+	GetToken() string
+	GetWebhookDomain() string
+	GetWebhookPort() int
+	GetWebhookSecret() string
+}
 
 type MyBot struct {
 	bot        *gotgbot.Bot
 	updater    *ext.Updater
 	dispatcher *ext.Dispatcher
+
+	token         string
+	webhookDomain string
+	webhookPort   int
+	webhookSecret string
 }
 
-func NewBot() *MyBot {
-	b, err := gotgbot.NewBot(viper.GetString("token"), &gotgbot.BotOpts{
+func NewBot(config Config) *MyBot {
+	b, err := gotgbot.NewBot(config.GetToken(), &gotgbot.BotOpts{
 		Client: http.Client{},
 		DefaultRequestOpts: &gotgbot.RequestOpts{
 			Timeout: time.Second * 15,
@@ -51,27 +62,34 @@ func NewBot() *MyBot {
 		bot:        b,
 		updater:    updater,
 		dispatcher: dispatcher,
+
+		token:         config.GetToken(),
+		webhookDomain: config.GetWebhookDomain(),
+		webhookPort:   config.GetWebhookPort(),
+		webhookSecret: config.GetWebhookSecret(),
 	}
 }
 
+// AddHandler adds a new handler to the dispatcher
 func (b *MyBot) AddHandler(h ext.Handler) {
 	b.dispatcher.AddHandler(h)
 }
 
+// Start starts webhook server and blocks with updater.Idle()
 func (b *MyBot) Start() {
-	// Start the webhook server. We start the server before we set the webhook itself, so that when telegram starts
+	// Start the server before we set the webhook itself, so that when telegram starts
 	// sending updates, the server is already ready.
 	webhookOpts := ext.WebhookOpts{
-		ListenAddr:  fmt.Sprintf("localhost:%d", viper.GetInt("webhook_port")),
-		SecretToken: viper.GetString("webhook_secret"),
+		ListenAddr:  fmt.Sprintf("localhost:%d", b.webhookPort),
+		SecretToken: b.webhookSecret,
 	}
 
-	err := b.updater.StartWebhook(b.bot, viper.GetString("token"), webhookOpts)
+	err := b.updater.StartWebhook(b.bot, b.token, webhookOpts)
 	if err != nil {
 		log.Fatal().Msg("failed to start webhook: " + err.Error())
 	}
 
-	err = b.updater.SetAllBotWebhooks(viper.GetString("webhook_domain"), &gotgbot.SetWebhookOpts{
+	err = b.updater.SetAllBotWebhooks(b.webhookDomain, &gotgbot.SetWebhookOpts{
 		MaxConnections:     100,
 		DropPendingUpdates: true,
 		SecretToken:        webhookOpts.SecretToken,
