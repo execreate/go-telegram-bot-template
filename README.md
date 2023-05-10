@@ -3,8 +3,12 @@
 This is a template for a Telegram Bot written in Go. It uses a
 [code-generated wrapper](https://github.com/PaulSonOfLars/gotgbot) to interact with the Telegram Bot API.
 
-Before you can use this template, you need to create a bot. To do this, you need to talk to
-[BotFather](https://t.me/BotFather). Then take the token you get from BotFather and put it in the `config.yaml` file.
-Keep your token in a safe place and don't commit it into git ;) Check out the [example configuration](config.dist.yaml)
-for a complete list of all available configuration options. Some of them are strictly required, others are optional,
-check [config.go](config.go) for details.
+## Start coding
+
+1. Talk to [BotFather](https://t.me/BotFather) and create a bot. You will get a token, keep it safe.
+2. For development purposes, we recommend running this with a tool such as ngrok.
+Simply [install ngrok](https://ngrok.com/download), make an account on the website, and run `ngrok http 8080`.
+3. Clone this repository.
+4. Copy `config.dist.yaml` to `config.yaml`, fill in your bot token and other parameters.
+5. Run `go run .` to start the bot.
+6. Then, simply send `/start` to your bot; if it replies, you've successfully set up your bot!
