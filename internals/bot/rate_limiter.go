@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/PaulSonOfLars/gotgbot/v2"
-	"golang.org/x/time/rate"
 	"my-telegram-bot/internals/chat"
 	"my-telegram-bot/internals/mylogger"
 	"strconv"
@@ -17,7 +16,6 @@ type rateLimitingBotClient struct {
 	// Inline existing client to call, allowing us to chain middlewares.
 	// Inlining also avoids us having to redefine helper methods part of the interface.
 	gotgbot.BotClient
-	limiter *rate.Limiter
 	chats   map[int64]*chat.Chat
 	chatsMu *sync.RWMutex
 }
@@ -38,14 +36,7 @@ func (b *rateLimitingBotClient) RequestWithContext(
 	data map[string]gotgbot.NamedReader,
 	opts *gotgbot.RequestOpts,
 ) (json.RawMessage, error) {
-	// For all methods we apply rate limiting to avoid hitting telegram's API rate limits.
-	// Wait for the general bot rate limiter.
-	if err := b.limiter.Wait(ctx); err != nil {
-		mylogger.LogError(err, "failed to wait for bot rate limiter")
-		return nil, err
-	}
-
-	// if we are interacting with a specific chat_id, we also wait for the chat rate limiter.
+	// if we are interacting with a specific chat_id, we wait for the chat rate limiter.
 	if chatID, ok := params["chat_id"]; ok && len(chatID) > 0 {
 		chatIDInt64, err := strconv.ParseInt(chatID, 10, 64)
 		if err != nil {
@@ -88,7 +79,6 @@ func (b *rateLimitingBotClient) removeStaleChats() {
 func rateLimiterMiddleware(b gotgbot.BotClient) gotgbot.BotClient {
 	c := &rateLimitingBotClient{
 		b,
-		rate.NewLimiter(rate.Every(33*time.Millisecond), 1),
 		make(map[int64]*chat.Chat),
 		&sync.RWMutex{},
 	}
