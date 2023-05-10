@@ -14,7 +14,7 @@ var (
 
 func init() {
 	localesConfig = viper.New()
-	flag.String("locale_path", "./locale", "path to the folder where locale files are located")
+	flag.String("locale-path", "./locale", "path to the folder where locale files are located")
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
 	pflag.Parse()
 	err := localesConfig.BindPFlags(pflag.CommandLine)
