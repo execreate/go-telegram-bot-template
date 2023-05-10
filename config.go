@@ -19,7 +19,7 @@ func configure() *Configuration {
 	config.SetConfigType("yaml")   // REQUIRED if the config file does not have the extension in the name
 	err := config.ReadInConfig()   // Find and read the config file
 	if err != nil {                // Handle errors reading the config file
-		mylogger.LogWarningf("error reading the config file: %v", err)
+		mylogger.LogInfof("error reading the config file (%v), fallback to env variables", err)
 	}
 	config.SetDefault("listen_port", 8080)
 	checkRequiredEnvVariables(config)
