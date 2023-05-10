@@ -13,6 +13,7 @@ func main() {
 	myBot := bot.NewBot(config)
 
 	// Add echo handler to reply to all text messages.
+	myBot.AddHandler(handlers.NewMessage(message.Equal("/start"), processors.Hello))
 	myBot.AddHandler(handlers.NewMessage(message.Text, processors.Echo))
 
 	myBot.Start()

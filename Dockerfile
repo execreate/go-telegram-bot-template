@@ -15,4 +15,5 @@ RUN update-ca-certificates
 FROM scratch
 COPY --from=cacerts /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=build /go/bin/app /go/bin/app
-CMD ["/go/bin/app"]
+COPY --from=build /app/locale /app/locale
+CMD ["/go/bin/app", "--locale-path", "/app/locale"]

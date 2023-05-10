@@ -5,6 +5,7 @@ import (
 	"github.com/PaulSonOfLars/gotgbot/v2"
 	"github.com/PaulSonOfLars/gotgbot/v2/ext"
 	"github.com/rs/zerolog/log"
+	"my-telegram-bot/internals/mylogger"
 	"net/http"
 	"time"
 )
@@ -37,7 +38,7 @@ func NewBot(config Config) *MyBot {
 	})
 
 	if err != nil {
-		log.Fatal().Msg("failed to create new bot: " + err.Error())
+		mylogger.LogFatal(err, "failed to create new bot")
 	}
 
 	b.UseMiddleware(rateLimiterMiddleware)
@@ -47,11 +48,11 @@ func NewBot(config Config) *MyBot {
 		Dispatcher: ext.NewDispatcher(&ext.DispatcherOpts{
 			// If an error is returned by a handler, log it and continue going.
 			Error: func(b *gotgbot.Bot, ctx *ext.Context, err error) ext.DispatcherAction {
-				log.Error().Msg("an error occurred while handling update: " + err.Error())
+				mylogger.LogError(err, "an error occurred while handling update")
 				return ext.DispatcherActionNoop
 			},
 			Panic: func(b *gotgbot.Bot, ctx *ext.Context, r interface{}) {
-				log.Error().Msg("a panic occurred while handling update: " + fmt.Sprint(r))
+				log.Panic().Any("panic_reason", r).Msg("a panic occurred while handling update")
 			},
 			MaxRoutines: ext.DefaultMaxRoutines,
 		}),
@@ -86,7 +87,7 @@ func (b *MyBot) Start() {
 
 	err := b.updater.StartWebhook(b.bot, b.token, webhookOpts)
 	if err != nil {
-		log.Fatal().Msg("failed to start webhook: " + err.Error())
+		mylogger.LogFatal(err, "failed to start webhook")
 	}
 
 	err = b.updater.SetAllBotWebhooks(b.webhookDomain, &gotgbot.SetWebhookOpts{
@@ -95,10 +96,10 @@ func (b *MyBot) Start() {
 		SecretToken:        webhookOpts.SecretToken,
 	})
 	if err != nil {
-		log.Fatal().Msg("failed to set webhook: " + err.Error())
+		mylogger.LogFatal(err, "failed to set webhook")
 	}
 
-	log.Info().Msgf("%s has been started...\n", b.bot.User.Username)
+	mylogger.LogInfof("%s has been started...\n", b.bot.User.Username)
 
 	// Idle, to keep updates coming in, and avoid bot stopping.
 	b.updater.Idle()

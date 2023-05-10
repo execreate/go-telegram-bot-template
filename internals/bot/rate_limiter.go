@@ -4,9 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/PaulSonOfLars/gotgbot/v2"
-	"github.com/rs/zerolog/log"
 	"golang.org/x/time/rate"
 	"my-telegram-bot/internals/chat"
+	"my-telegram-bot/internals/mylogger"
 	"strconv"
 	"sync"
 	"time"
@@ -41,7 +41,7 @@ func (b *rateLimitingBotClient) RequestWithContext(
 	// For all methods we apply rate limiting to avoid hitting telegram's API rate limits.
 	// Wait for the general bot rate limiter.
 	if err := b.limiter.Wait(ctx); err != nil {
-		log.Error().Msgf("failed to wait for bot rate limiter: %v", err)
+		mylogger.LogError(err, "failed to wait for bot rate limiter")
 		return nil, err
 	}
 
@@ -49,11 +49,11 @@ func (b *rateLimitingBotClient) RequestWithContext(
 	if chatID, ok := params["chat_id"]; ok && len(chatID) > 0 {
 		chatIDInt64, err := strconv.ParseInt(chatID, 10, 64)
 		if err != nil {
-			log.Error().Msgf("failed to convert chatID to int64: %v", err)
+			mylogger.LogError(err, "failed to convert chatID to int64")
 			return nil, err
 		}
 		if err := b.waitChatLimiter(ctx, chatIDInt64); err != nil {
-			log.Error().Msgf("failed to wait for chat rate limiter: %v", err)
+			mylogger.LogError(err, "failed to wait for chat rate limiter")
 			return nil, err
 		}
 	}

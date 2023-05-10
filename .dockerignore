@@ -1,0 +1,11 @@
+# Ignore files and directories that are not required for the image build
+Dockerfile
+docker-compose.yml
+
+# Ignore files and directories that are not required for the runtime container
+*.log
+*.gz
+*.zip
+.git
+.idea
+.vscode
