@@ -38,7 +38,7 @@ func GetTranslations(locale string) (*viper.Viper, error) {
 			err,
 			"failed to get translations for locale %v at path %s",
 			locale,
-			localesConfig.GetString("locale_path"),
+			localesConfig.GetString("locale-path"),
 		)
 		return nil, err
 	}
