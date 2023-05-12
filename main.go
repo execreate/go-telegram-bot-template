@@ -21,7 +21,6 @@ func main() {
 
 	userLoggerInstance := processors.NewUserLogger(db)
 
-	// Add echo handler to reply to all text messages.
 	myBot.AddHandler(handlers.NewMessage(message.Equal("/start"), userLoggerInstance.Hello))
 	myBot.AddHandler(handlers.NewMessage(message.Text, processors.Echo))
 
