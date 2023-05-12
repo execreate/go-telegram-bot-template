@@ -5,7 +5,7 @@ import (
 	"github.com/PaulSonOfLars/gotgbot/v2"
 	"github.com/PaulSonOfLars/gotgbot/v2/ext"
 	"github.com/rs/zerolog/log"
-	"my-telegram-bot/internals/mylogger"
+	"my-telegram-bot/mylogger"
 	"net/http"
 	"time"
 )

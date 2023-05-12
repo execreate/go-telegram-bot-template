@@ -177,3 +177,4 @@ $RECYCLE.BIN/
 .env
 config.yaml
 .idea
+test.db

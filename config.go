@@ -2,7 +2,7 @@ package main
 
 import (
 	"github.com/spf13/viper"
-	"my-telegram-bot/internals/mylogger"
+	"my-telegram-bot/mylogger"
 )
 
 type Configuration struct {
