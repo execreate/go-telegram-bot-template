@@ -24,5 +24,5 @@ func main() {
 	myBot.AddHandler(handlers.NewMessage(message.Equal("/start"), userLoggerInstance.Hello))
 	myBot.AddHandler(handlers.NewMessage(message.Text, processors.Echo))
 
-	myBot.Start()
+	myBot.Run()
 }

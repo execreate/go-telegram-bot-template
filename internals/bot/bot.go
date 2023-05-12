@@ -76,8 +76,8 @@ func (b *MyBot) AddHandler(h ext.Handler) {
 	b.dispatcher.AddHandler(h)
 }
 
-// Start starts webhook server and blocks with updater.Idle()
-func (b *MyBot) Start() {
+// Run starts webhook server and blocks with updater.Idle()
+func (b *MyBot) Run() {
 	// Start the server before we set the webhook itself, so that when telegram starts
 	// sending updates, the server is already ready.
 	webhookOpts := ext.WebhookOpts{
