@@ -3,11 +3,11 @@
   <component name="GoLinterSettings">
     <option name="enabledLinters">
       <list>
+        <option value="exportloopref" />
         <option value="interfacer" />
         <option value="staticcheck" />
-        <option value="exportloopref" />
-        <option value="dupl" />
         <option value="govet" />
+        <option value="dupl" />
         <option value="funlen" />
         <option value="errorlint" />
         <option value="gocritic" />
@@ -17,16 +17,16 @@
         <option value="bodyclose" />
         <option value="gosec" />
         <option value="maligned" />
-        <option value="revive" />
         <option value="stylecheck" />
+        <option value="revive" />
         <option value="whitespace" />
-        <option value="gosimple" />
         <option value="goprintffuncname" />
-        <option value="gocyclo" />
+        <option value="gosimple" />
         <option value="prealloc" />
+        <option value="gocyclo" />
       </list>
     </option>
-    <option name="goLinterExe" value="/usr/local/bin/golangci-lint" />
+    <option name="goLinterExe" value="$USER_HOME$/go/bin/golangci-lint" />
     <option name="linterSelected" value="true" />
   </component>
 </project>

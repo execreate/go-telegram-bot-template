@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+    <meta name="format-detection" content="telephone=no"/>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
+    <meta name="MobileOptimized" content="176"/>
+    <meta name="HandheldFriendly" content="True"/>
+    <meta name="robots" content="noindex,nofollow"/>
+    <title>Terms and Conditions</title>
+    <script src="https://telegram.org/js/telegram-web-app.js?"></script>
+</head>
+<body>
+
+<h1>Terms and Conditions ("Terms")</h1>
+<p>Last updated: January 01, 2017</p>
+
+<p>Please read these Terms and Conditions ("Terms", "Terms and Conditions") carefully before using our bot.</p>
+
+<button onclick="acceptTerms()">Accept!</button>
+
+<script>
+    Telegram.WebApp.ready()
+
+    function acceptTerms() {
+        Telegram.WebApp.showConfirm("Are you sure you want to accept terms and conditions?", function (accepted) {
+            if (accepted) {
+                fetch("/accept_terms?" + Telegram.WebApp.initData).then(function (response) {
+                    if (response.status !== 200) {
+                        throw new Error("Error " + response.status + ": " + response.text())
+                    }
+                }).then(function () {
+                    Telegram.WebApp.close()
+                }).catch(function (err) {
+                    Telegram.WebApp.showAlert(err.message);
+                    Telegram.WebApp.close()
+                });
+            } else {
+                Telegram.WebApp.close()
+            }
+        });
+    }
+</script>
+
+</body>
+</html>

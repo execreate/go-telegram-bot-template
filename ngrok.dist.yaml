@@ -1,0 +1,9 @@
+version: "2"
+authtoken: your_auth_token
+tunnels:
+    bot_webhook:
+        proto: http
+        addr: 8080
+    web_app:
+        proto: http
+        addr: 8081

@@ -1,2 +1,6 @@
 hello: |-
-    Hello, world!
+    Hello, %s!
+terms_and_conditions: |-
+    Please review our terms and conditions and accept them to start using our services.
+terms_and_conditions_changed: |-
+    Our terms and conditions have been amended. Please review and accept them to continue using our services.

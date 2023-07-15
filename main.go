@@ -1,20 +1,27 @@
 package main
 
 import (
-	"github.com/PaulSonOfLars/gotgbot/v2/ext/handlers"
+	tgbotHandlers "github.com/PaulSonOfLars/gotgbot/v2/ext/handlers"
 	"github.com/PaulSonOfLars/gotgbot/v2/ext/handlers/filters/message"
+	"my-telegram-bot/handlers"
+	"my-telegram-bot/handlers/context"
 	"my-telegram-bot/internals/bot"
-	"my-telegram-bot/processors"
+	"my-telegram-bot/static"
 )
 
 func main() {
 	config := configure()
-
 	myBot := bot.NewBot(config)
 
-	// Add echo handler to reply to all text messages.
-	myBot.AddHandler(handlers.NewMessage(message.Equal("/start"), processors.Hello))
-	myBot.AddHandler(handlers.NewMessage(message.Text, processors.Echo))
+	// enrich context data
+	myBot.AddHandlerToGroup(context.NewUserContextHandler(myBot.UsersCache), -1)
+	myBot.AddHandlerToGroup(context.NewMiscContextHandler(config.GetWebAppDomain()), -2)
 
-	myBot.Start()
+	// start command group
+	myBot.AddHandlerToGroup(tgbotHandlers.NewMessage(message.Equal("/start"), handlers.Hello), 0)
+
+	// terms and conditions group
+	myBot.AddHandlerToGroup(handlers.NewTermsAndConditionsHandler(), 1)
+
+	myBot.Run(static.ServeStaticContent(config, myBot.AcceptTermsAndConditions))
 }

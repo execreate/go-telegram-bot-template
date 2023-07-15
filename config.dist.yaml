@@ -1,4 +1,9 @@
 token: "YOUR_BOT_TOKEN"
-webhook_domain: "YOUR_BOT_WEBHOOK_DOMAIN"
-webhook_port: 8080
+webhook_domain: "YOUR_WEBHOOK_DOMAIN"
+webhook_port: "8080"
 webhook_secret: "YOUR_BOT_WEBHOOK_SECRET"
+webapp_domain: "YOUR_WEBAPP_DOMAIN"
+webapp_port: "8081"
+db_dsn: "DATABASE_CONNECTION_STRING"
+static_content_path: "STATIC_CONTENT_PATH"
+google_maps_api_key: "API_KEY"

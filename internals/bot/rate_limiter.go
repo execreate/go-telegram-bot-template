@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"github.com/PaulSonOfLars/gotgbot/v2"
 	"my-telegram-bot/internals/chat"
-	"my-telegram-bot/internals/mylogger"
+	"my-telegram-bot/mylogger"
 	"strconv"
 	"sync"
 	"time"
