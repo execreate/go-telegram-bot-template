@@ -176,3 +176,6 @@ $RECYCLE.BIN/
 # End of https://www.toptal.com/developers/gitignore/api/goland,macos,windows
 .env
 config.yaml
+ngrok.yaml
+.idea
+test.db
