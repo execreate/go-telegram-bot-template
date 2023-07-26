@@ -1,3 +1,8 @@
+FROM alpine as cacerts
+
+RUN apk update && apk upgrade && apk add --no-cache ca-certificates
+RUN update-ca-certificates
+
 FROM golang:1.20 as build
 
 WORKDIR /app
@@ -7,10 +12,6 @@ RUN go mod download
 RUN go mod verify
 COPY . /app
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /go/bin/app
-
-FROM alpine as cacerts
-RUN apk update && apk upgrade && apk add --no-cache ca-certificates
-RUN update-ca-certificates
 
 FROM scratch
 COPY --from=cacerts /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
