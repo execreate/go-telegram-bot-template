@@ -39,12 +39,12 @@ func NewConversationStorage(config RedisConfig) *ConversationStorage {
 // KeyNotFound error.
 func (storage *ConversationStorage) Get(ctx *ext.Context) (*conversation.State, error) {
 	key := conversation.StateKey(ctx, storage.keyStrategy)
-	if state, err := storage.redisClient.Get(context.Background(), key).Result(); err != redis.Nil {
+	if state, err := storage.redisClient.Get(context.Background(), key).Result(); err == nil {
 		return &conversation.State{Key: state}, nil
-	} else if err != nil {
-		return nil, err
-	} else {
+	} else if err == redis.Nil {
 		return nil, conversation.KeyNotFound
+	} else {
+		return nil, err
 	}
 }
 
