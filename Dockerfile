@@ -16,4 +16,8 @@ FROM scratch
 COPY --from=cacerts /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=build /go/bin/app /go/bin/app
 COPY --from=build /app/locale /app/locale
+
+COPY --from=build /app/static /app/static
+ENV MY_BOT_STATIC_CONTENT_PATH=/app/static
+
 CMD ["/go/bin/app", "--locale-path", "/app/locale"]
