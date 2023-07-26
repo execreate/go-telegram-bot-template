@@ -17,7 +17,7 @@ and run `ngrok start --config=ngrok.yaml bot_webhook web_app`.
 ## Features
 
 1. Viper for config handling
-2. Dockerfile + Compose
+2. Dockerfile
 3. Ngrok for easy development
 4. Logging
 5. WebApp setup
