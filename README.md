@@ -16,17 +16,17 @@ and run `ngrok start --config=ngrok.yaml bot_webhook web_app`.
 
 ## Features
 
-This setup is currently in use in my other project and will likely be used in other projects as well,
-it includes some common things like:
+1. Viper for config handling
+2. Dockerfile + Compose
+3. Ngrok for easy development
+4. Logging
+5. WebApp setup
+6. Database setup
 
-1. Dockerfile
-2. Ngrok for easy development
-3. WebApp setup with gin-gonic webserver
-4. Database setup
-5. Handlers to keep common stuff in context
-6. Viper for config and translatable text handling
-7. In-memory cache to keep users information
-8. Rate-limiter for requests to the telegram servers
-9. Ready to use Redis storage class for conversation metadata
+### Migrations
 
-Just dive into the code and you'll see. Happy coding!
+Check out [Goose](https://github.com/pressly/goose) for an installation guide and docs.
+
+```shell
+goose -dir ./database/migrations/sqlite sqlite ./test.db up
+```

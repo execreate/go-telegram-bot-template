@@ -5,8 +5,9 @@ import (
 	"encoding/json"
 	"github.com/PaulSonOfLars/gotgbot/v2"
 	"my-telegram-bot/internals/chat"
-	"my-telegram-bot/mylogger"
+	"my-telegram-bot/internals/logger"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -40,13 +41,18 @@ func (b *rateLimitingBotClient) RequestWithContext(
 	if chatID, ok := params["chat_id"]; ok && len(chatID) > 0 {
 		chatIDInt64, err := strconv.ParseInt(chatID, 10, 64)
 		if err != nil {
-			mylogger.LogError(err, "failed to convert chatID to int64")
+			logger.LogError(err, "failed to convert chatID to int64")
 			return nil, err
 		}
 		if err := b.waitChatLimiter(ctx, chatIDInt64); err != nil {
-			mylogger.LogError(err, "failed to wait for chat rate limiter")
+			logger.LogError(err, "failed to wait for chat rate limiter")
 			return nil, err
 		}
+	}
+
+	// Allow sending the message without a reply
+	if strings.HasPrefix(method, "send") || method == "copyMessage" {
+		params["allow_sending_without_reply"] = "true"
 	}
 
 	// Call the next bot client instance in the middleware chain.

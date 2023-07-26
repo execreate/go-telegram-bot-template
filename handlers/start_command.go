@@ -15,9 +15,5 @@ func Hello(b *gotgbot.Bot, ctx *ext.Context) error {
 		fmt.Sprintf(texts.GetString("hello"), ctx.EffectiveUser.FirstName),
 		nil,
 	)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return err
 }

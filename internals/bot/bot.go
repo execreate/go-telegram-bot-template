@@ -6,8 +6,8 @@ import (
 	"github.com/PaulSonOfLars/gotgbot/v2/ext"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	"my-telegram-bot/internals/logger"
 	"my-telegram-bot/internals/users_cache"
-	"my-telegram-bot/mylogger"
 	"net/http"
 	"time"
 )
@@ -49,7 +49,7 @@ func NewBot(config Config) *MyBot {
 	})
 
 	if err != nil {
-		mylogger.LogFatal(err, "failed to create new bot")
+		logger.LogFatal(err, "failed to create new bot")
 	}
 
 	b.UseMiddleware(rateLimiterMiddleware)
@@ -59,11 +59,11 @@ func NewBot(config Config) *MyBot {
 		Dispatcher: ext.NewDispatcher(&ext.DispatcherOpts{
 			// If an error is returned by a handler, log it and continue going.
 			Error: func(b *gotgbot.Bot, ctx *ext.Context, err error) ext.DispatcherAction {
-				mylogger.LogError(err, "an error occurred while handling update")
+				logger.LogError(err, "an error occurred while handling update")
 				return ext.DispatcherActionEndGroups
 			},
 			Panic: func(b *gotgbot.Bot, ctx *ext.Context, r interface{}) {
-				mylogger.LogPanic(r, "a panic occurred while handling update")
+				logger.LogPanic(r, "a panic occurred while handling update")
 			},
 			MaxRoutines: ext.DefaultMaxRoutines,
 		}),
@@ -72,7 +72,7 @@ func NewBot(config Config) *MyBot {
 
 	db, err := gorm.Open(sqlite.Open(config.GetDbDSN()), &gorm.Config{})
 	if err != nil {
-		mylogger.LogFatal(err, "failed to connect to database")
+		logger.LogFatal(err, "failed to connect to database")
 	}
 
 	usersCache := users_cache.NewTgUsersCache(db, 4*time.Hour, 4*24*time.Hour)
@@ -104,8 +104,25 @@ func (b *MyBot) AddHandlerToGroup(h ext.Handler, group int) {
 	b.dispatcher.AddHandlerToGroup(h, group)
 }
 
+// SendMessage sends a message with specified parameters
+func (b *MyBot) SendMessage(chatId int64, text string, opts *gotgbot.SendMessageOpts) (*gotgbot.Message, error) {
+	return b.bot.SendMessage(chatId, text, opts)
+}
+
+// AnswerWebAppQuery answers the web app query
+func (b *MyBot) AnswerWebAppQuery(
+	webAppQueryId string,
+	result gotgbot.InlineQueryResult,
+	opts *gotgbot.AnswerWebAppQueryOpts,
+) (
+	*gotgbot.SentWebAppMessage,
+	error,
+) {
+	return b.bot.AnswerWebAppQuery(webAppQueryId, result, opts)
+}
+
 // Run starts webhook server and blocks with updater.Idle()
-func (b *MyBot) Run(serveStaticContentFunc func()) {
+func (b *MyBot) Run(serveGinServer func()) {
 	// Start the server before we set the webhook itself, so that when telegram starts
 	// sending updates, the server is already ready.
 	webhookOpts := ext.WebhookOpts{
@@ -115,7 +132,7 @@ func (b *MyBot) Run(serveStaticContentFunc func()) {
 
 	err := b.updater.StartWebhook(b.bot, b.webhookPath, webhookOpts)
 	if err != nil {
-		mylogger.LogFatal(err, "failed to start webhook")
+		logger.LogFatal(err, "failed to start webhook")
 	}
 
 	err = b.updater.SetAllBotWebhooks(b.webhookDomain, &gotgbot.SetWebhookOpts{
@@ -124,15 +141,20 @@ func (b *MyBot) Run(serveStaticContentFunc func()) {
 		SecretToken:        webhookOpts.SecretToken,
 	})
 	if err != nil {
-		mylogger.LogFatal(err, "failed to set webhook")
+		logger.LogFatal(err, "failed to set webhook")
 	}
 
-	mylogger.LogInfof("Webhooks for %s have been started...", b.bot.User.Username)
+	logger.LogInfof("Webhooks for %s have been started...", b.bot.User.Username)
 
-	if serveStaticContentFunc != nil {
-		serveStaticContentFunc()
+	if serveGinServer != nil {
+		serveGinServer()
 	} else {
 		// Idle, to keep updates coming in, and avoid bot stopping.
 		b.updater.Idle()
 	}
+}
+
+// GetUsername returns the bot username
+func (b *MyBot) GetUsername() string {
+	return b.bot.User.Username
 }

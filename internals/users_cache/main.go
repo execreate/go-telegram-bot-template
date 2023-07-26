@@ -5,8 +5,8 @@ import (
 	"github.com/pkg/errors"
 	"gorm.io/gorm"
 	"my-telegram-bot/database/tables"
+	"my-telegram-bot/internals/logger"
 	"my-telegram-bot/internals/users_cache/user_container"
-	"my-telegram-bot/mylogger"
 	"sync"
 	"time"
 )
@@ -42,7 +42,7 @@ func (tgUsrPool *TgUsersCache) Get(effectiveUser *gotgbot.User) (*tables.Telegra
 		if needsUpdate {
 			go func(dbConn *gorm.DB, user *tables.TelegramUser) {
 				if err := dbConn.Save(user).Error; err != nil {
-					mylogger.LogError(err, "failed to update user details")
+					logger.LogError(err, "failed to update user details")
 				}
 			}(tgUsrPool.dbConn, user)
 		}
@@ -84,16 +84,17 @@ func (tgUsrPool *TgUsersCache) UserHasAcceptedTermsAndConditions(userID int64) e
 	defer tgUsrPool.mu.RUnlock()
 
 	if userContainer, ok := tgUsrPool.users[userID]; ok {
+		acceptedOn := time.Now()
 		err := tgUsrPool.dbConn.Model(&tables.TelegramUser{ID: userID}).Updates(
 			tables.TelegramUser{
-				HasAcceptedTermsAndConditions:       true,
-				HasAcceptedLatestTermsAndConditions: true,
+				AcceptedTermsAndConditionsOn:     acceptedOn,
+				AcceptedLatestTermsAndConditions: true,
 			},
 		).Error
 		if err != nil {
 			return err
 		}
-		userContainer.TermsAndConditionsAccepted()
+		userContainer.TermsAndConditionsAccepted(acceptedOn)
 		return nil
 	} else {
 		return errors.New("user not found in cache, should never come here")

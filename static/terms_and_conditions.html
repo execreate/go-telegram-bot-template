@@ -11,20 +11,66 @@
     <meta name="robots" content="noindex,nofollow"/>
     <title>Terms and Conditions</title>
     <script src="https://telegram.org/js/telegram-web-app.js?"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+        }
+
+        .container {
+            border-radius: 5px;
+            background-color: #f2f2f2;
+            padding: 20px;
+        }
+
+        .terms {
+            margin-bottom: 20px;
+        }
+
+        .accept-btn {
+            background-color: #4CAF50;
+            color: white;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            width: 100%;
+        }
+
+        .accept-btn:hover {
+            background-color: #45a049;
+        }
+    </style>
 </head>
 <body>
 
-<h1>Terms and Conditions ("Terms")</h1>
-<p>Last updated: January 01, 2017</p>
+<div class="container">
+    <div class="terms">
+        <h2>Terms and Conditions</h2>
+        <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Donec in ante eu velit pellentesque consectetur.
+            Suspendisse volutpat magna ut tellus elementum efficitur. Mauris vel gravida mauris, vel laoreet justo.</p>
+        <p>Nullam in augue eget tortor vulputate lobortis id ac nisi. Aenean condimentum scelerisque ex, nec finibus
+            urna pretium nec. Morbi hendrerit pharetra est, vel commodo lorem efficitur id.</p>
+        <p>Quisque vulputate purus a lorem auctor, ac commodo nisl iaculis. Morbi aliquam mauris turpis, ac faucibus ex
+            convallis vitae. Sed a auctor massa. Suspendisse ultricies mauris non felis egestas iaculis.</p>
+    </div>
 
-<p>Please read these Terms and Conditions ("Terms", "Terms and Conditions") carefully before using our bot.</p>
-
-<button onclick="acceptTerms()">Accept!</button>
+    <button class="accept-btn" onclick="acceptTerms()">Accept Terms and Conditions</button>
+</div>
 
 <script>
     Telegram.WebApp.ready()
 
+    let btn = document.querySelector(".accept-btn")
+    if (Telegram.WebApp.initData.length < 10) {
+        btn.hidden = true;
+    }
+
     function acceptTerms() {
+        if (Telegram.WebApp.initData.length < 10) {
+            return;
+        }
+
         Telegram.WebApp.showConfirm("Are you sure you want to accept terms and conditions?", function (accepted) {
             if (accepted) {
                 fetch("/accept_terms?" + Telegram.WebApp.initData).then(function (response) {

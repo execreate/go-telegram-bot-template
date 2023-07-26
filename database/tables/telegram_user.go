@@ -2,10 +2,12 @@ package tables
 
 import (
 	"gorm.io/gorm"
+	"time"
 )
 
 type TelegramUser struct {
 	gorm.Model
+
 	ID           int64  `gorm:"primaryKey;autoIncrement:false"`
 	FirstName    string `gorm:"size:250"`
 	LastName     string `gorm:"size:250"`
@@ -13,6 +15,6 @@ type TelegramUser struct {
 	LanguageCode string `gorm:"size:3"`
 	IsAdmin      bool
 
-	HasAcceptedTermsAndConditions       bool
-	HasAcceptedLatestTermsAndConditions bool
+	AcceptedTermsAndConditionsOn     time.Time
+	AcceptedLatestTermsAndConditions bool
 }

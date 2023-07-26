@@ -3,22 +3,43 @@ package handlers
 import (
 	"github.com/PaulSonOfLars/gotgbot/v2"
 	"github.com/PaulSonOfLars/gotgbot/v2/ext"
+	"github.com/gin-gonic/gin"
 	"github.com/spf13/viper"
 	"my-telegram-bot/database/tables"
+	"my-telegram-bot/internals/bot"
+	"my-telegram-bot/internals/gin_server"
+	"my-telegram-bot/internals/logger"
+	"net/http"
 )
 
-type TermsAndConditionsHandler struct{}
-
-func NewTermsAndConditionsHandler() *TermsAndConditionsHandler {
-	return &TermsAndConditionsHandler{}
+type TermsAndConditionsHandler struct {
+	bot      *bot.MyBot
+	htmlFile string
 }
 
-func (terms TermsAndConditionsHandler) CheckUpdate(_ *gotgbot.Bot, ctx *ext.Context) bool {
+func NewTermsAndConditionsHandler(bot *bot.MyBot, srv *gin_server.Server) *TermsAndConditionsHandler {
+	termsHandler := &TermsAndConditionsHandler{
+		bot:      bot,
+		htmlFile: "terms_and_conditions.html",
+	}
+
+	srv.AddStaticFileHandler(termsHandler.htmlFile)
+
+	srv.AddWebAppRequestHandler(
+		gin_server.GET,
+		"/accept_terms",
+		termsHandler.handleAcceptTermsAndConditions,
+	)
+
+	return termsHandler
+}
+
+func (handler *TermsAndConditionsHandler) CheckUpdate(_ *gotgbot.Bot, ctx *ext.Context) bool {
 	user := ctx.Data["db_user"].(*tables.TelegramUser)
-	return !user.HasAcceptedTermsAndConditions || !user.HasAcceptedLatestTermsAndConditions
+	return !user.AcceptedLatestTermsAndConditions || user.AcceptedTermsAndConditionsOn.IsZero()
 }
 
-func (terms TermsAndConditionsHandler) HandleUpdate(b *gotgbot.Bot, ctx *ext.Context) error {
+func (handler *TermsAndConditionsHandler) HandleUpdate(b *gotgbot.Bot, ctx *ext.Context) error {
 	texts := ctx.Data["texts"].(*viper.Viper)
 	user := ctx.Data["db_user"].(*tables.TelegramUser)
 
@@ -29,7 +50,7 @@ func (terms TermsAndConditionsHandler) HandleUpdate(b *gotgbot.Bot, ctx *ext.Con
 					{
 						Text: "Terms and Conditions",
 						WebApp: &gotgbot.WebAppInfo{
-							Url: ctx.Data["webapp_domain"].(string) + "/terms_and_conditions.html",
+							Url: ctx.Data["webapp_domain"].(string) + "/" + handler.htmlFile,
 						},
 					},
 				},
@@ -38,7 +59,7 @@ func (terms TermsAndConditionsHandler) HandleUpdate(b *gotgbot.Bot, ctx *ext.Con
 	}
 
 	replyMsgText := texts.GetString("terms_and_conditions")
-	if user.HasAcceptedTermsAndConditions && !user.HasAcceptedLatestTermsAndConditions {
+	if !user.AcceptedTermsAndConditionsOn.IsZero() && !user.AcceptedLatestTermsAndConditions {
 		replyMsgText = texts.GetString("terms_and_conditions_changed")
 	}
 
@@ -51,6 +72,31 @@ func (terms TermsAndConditionsHandler) HandleUpdate(b *gotgbot.Bot, ctx *ext.Con
 	return ext.EndGroups
 }
 
-func (terms TermsAndConditionsHandler) Name() string {
+func (handler *TermsAndConditionsHandler) Name() string {
 	return "TermsAndConditionsHandler"
+}
+
+func (handler *TermsAndConditionsHandler) handleAcceptTermsAndConditions(
+	c *gin.Context,
+	webAppUser *gin_server.TgWebAppUser,
+	texts *viper.Viper,
+) {
+	if err := handler.bot.UsersCache.UserHasAcceptedTermsAndConditions(webAppUser.ID); err != nil {
+		logger.LogError(err, "failed to update user's terms and conditions acceptance status")
+		_, err = handler.bot.SendMessage(webAppUser.ID, texts.GetString("failed_to_accept_terms"), nil)
+		if err != nil {
+			logger.LogError(err, "failed to send message to user")
+		}
+	} else {
+		_, err := handler.bot.SendMessage(webAppUser.ID, texts.GetString("successfully_accepted_terms"), nil)
+		if err != nil {
+			logger.LogError(err, "failed to send message to user")
+		}
+	}
+
+	c.Data(
+		http.StatusOK,
+		"text/plain; charset=utf-8",
+		[]byte("validation success, user is authenticated"),
+	)
 }

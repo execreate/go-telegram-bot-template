@@ -53,11 +53,11 @@ func (tgUser *TgUserContainer) Get(effectiveUser *gotgbot.User) (*tables.Telegra
 }
 
 // TermsAndConditionsAccepted method modifies the underlying user object
-func (tgUser *TgUserContainer) TermsAndConditionsAccepted() {
+func (tgUser *TgUserContainer) TermsAndConditionsAccepted(acceptedOn time.Time) {
 	tgUser.mu.Lock()
 	defer tgUser.mu.Unlock()
 
 	tgUser.lastActivity = time.Now()
-	tgUser.user.HasAcceptedTermsAndConditions = true
-	tgUser.user.HasAcceptedLatestTermsAndConditions = true
+	tgUser.user.AcceptedTermsAndConditionsOn = acceptedOn
+	tgUser.user.AcceptedLatestTermsAndConditions = true
 }

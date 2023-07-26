@@ -1,6 +1,14 @@
 hello: |-
     Hello, %s!
+
 terms_and_conditions: |-
     Please review our terms and conditions and accept them to start using our services.
+
 terms_and_conditions_changed: |-
     Our terms and conditions have been amended. Please review and accept them to continue using our services.
+
+successfully_accepted_terms: |-
+    Thank you for accepting our Terms and Conditions.
+
+failed_to_accept_terms: |-
+    Failed to accept Terms and Conditions, please try again.

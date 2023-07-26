@@ -21,7 +21,7 @@ func (miscCtx MiscContextHandler) CheckUpdate(_ *gotgbot.Bot, _ *ext.Context) bo
 func (miscCtx MiscContextHandler) HandleUpdate(_ *gotgbot.Bot, ctx *ext.Context) error {
 	ctx.Data["webapp_domain"] = miscCtx.webAppDomain
 
-	texts, err := locale.GetTranslations("en")
+	texts, err := locale.GetTranslations(ctx.EffectiveUser.LanguageCode)
 	if err != nil {
 		return err
 	}

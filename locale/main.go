@@ -4,7 +4,7 @@ import (
 	"flag"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
-	"my-telegram-bot/mylogger"
+	"my-telegram-bot/internals/logger"
 )
 
 var (
@@ -19,7 +19,7 @@ func init() {
 	pflag.Parse()
 	err := localesConfig.BindPFlags(pflag.CommandLine)
 	if err != nil {
-		mylogger.LogFatal(err, "failed to bind flags")
+		logger.LogFatal(err, "failed to bind flags")
 	}
 }
 
@@ -34,7 +34,7 @@ func GetTranslations(locale string) (*viper.Viper, error) {
 	config.AddConfigPath(localesConfig.GetString("locale-path"))
 	err := config.ReadInConfig()
 	if err != nil {
-		mylogger.LogErrorf(
+		logger.LogErrorf(
 			err,
 			"failed to get translations for locale %v at path %s",
 			locale,

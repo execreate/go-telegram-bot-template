@@ -1,8 +1,8 @@
-package main
+package configuration
 
 import (
 	"github.com/spf13/viper"
-	"my-telegram-bot/mylogger"
+	"my-telegram-bot/internals/logger"
 	"os"
 	"strings"
 )
@@ -12,7 +12,7 @@ type Configuration struct {
 	*viper.Viper
 }
 
-func configure() *Configuration {
+func Configure() *Configuration {
 	// configure viper
 	config := &Configuration{viper.New()}
 	config.SetEnvPrefix("my_bot")  // will be upper-cased automatically
@@ -22,7 +22,7 @@ func configure() *Configuration {
 	config.SetConfigType("yaml")   // REQUIRED if the config file does not have the extension in the name
 	err := config.ReadInConfig()   // Find and read the config file
 	if err != nil {                // Handle errors reading the config file
-		mylogger.LogInfof("error reading the config file (%v), fallback to env variables", err)
+		logger.LogInfof("error reading the config file (%v), fallback to env variables", err)
 	}
 	config.SetDefault("webhook_port", 8080)
 	config.SetDefault("webapp_port", 8081)
@@ -34,31 +34,31 @@ func checkRequiredEnvVariables(config *Configuration) {
 	// Check token is set in the environment variable.
 	token := config.GetString("token")
 	if token == "" {
-		mylogger.LogFatal(nil, "TOKEN configuration variable is empty")
+		logger.LogFatal(nil, "TOKEN configuration variable is empty")
 	}
 
 	// Check the webhook domain is set in the environment variable.
 	webhookDomain := config.GetString("webhook_domain")
 	if webhookDomain == "" {
-		mylogger.LogFatal(nil, "WEBHOOK_DOMAIN configuration variable is empty")
+		logger.LogFatal(nil, "WEBHOOK_DOMAIN configuration variable is empty")
 	}
 
 	// Check the webhook domain is set in the environment variable.
 	webAppDomain := config.GetString("webapp_domain")
 	if webAppDomain == "" {
-		mylogger.LogFatal(nil, "WEBAPP_DOMAIN configuration variable is empty")
+		logger.LogFatal(nil, "WEBAPP_DOMAIN configuration variable is empty")
 	}
 
 	// Check the webhook secret is set in the environment variable.
 	webhookSecret := config.GetString("webhook_secret")
 	if webhookSecret == "" {
-		mylogger.LogFatal(nil, "WEBHOOK_SECRET configuration variable is empty")
+		logger.LogFatal(nil, "WEBHOOK_SECRET configuration variable is empty")
 	}
 
 	// Check the static content path is set in the environment variable.
 	staticContentPath := config.GetString("static_content_path")
 	if staticContentPath == "" {
-		mylogger.LogFatal(nil, "STATIC_CONTENT_PATH configuration variable is empty")
+		logger.LogFatal(nil, "STATIC_CONTENT_PATH configuration variable is empty")
 	}
 }
 
