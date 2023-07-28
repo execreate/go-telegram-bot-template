@@ -25,6 +25,7 @@ type Config interface {
 
 type MyBot struct {
 	UsersCache *users_cache.TgUsersCache
+	DbConn     *gorm.DB
 
 	bot        *gotgbot.Bot
 	updater    *ext.Updater
@@ -79,6 +80,7 @@ func NewBot(config Config) *MyBot {
 
 	return &MyBot{
 		UsersCache: usersCache,
+		DbConn:     db,
 
 		bot:        b,
 		updater:    updater,

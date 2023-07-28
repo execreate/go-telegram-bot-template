@@ -10,8 +10,14 @@ import (
 func MyID(b *gotgbot.Bot, ctx *ext.Context) error {
 	_, err := ctx.EffectiveMessage.Reply(
 		b,
-		fmt.Sprintf("ID: %d", ctx.EffectiveUser.Id),
-		nil,
+		fmt.Sprintf(
+			"User ID: `%d`\nChat ID: `%d`",
+			ctx.EffectiveUser.Id,
+			ctx.EffectiveChat.Id,
+		),
+		&gotgbot.SendMessageOpts{
+			ParseMode: gotgbot.ParseModeMarkdownV2,
+		},
 	)
 	return err
 }

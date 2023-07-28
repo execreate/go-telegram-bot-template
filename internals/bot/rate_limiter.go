@@ -4,11 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/PaulSonOfLars/gotgbot/v2"
+	"golang.org/x/time/rate"
 	"my-telegram-bot/internals/chat"
 	"my-telegram-bot/internals/logger"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -17,8 +17,7 @@ type rateLimitingBotClient struct {
 	// Inline existing client to call, allowing us to chain middlewares.
 	// Inlining also avoids us having to redefine helper methods part of the interface.
 	gotgbot.BotClient
-	chats   map[int64]*chat.Chat
-	chatsMu *sync.RWMutex
+	limiters *chat.RateLimiterPool
 }
 
 // RequestWithContext defines a wrapper around existing RequestWithContext method.
@@ -44,7 +43,7 @@ func (b *rateLimitingBotClient) RequestWithContext(
 			logger.LogError(err, "failed to convert chatID to int64")
 			return nil, err
 		}
-		if err := b.waitChatLimiter(ctx, chatIDInt64); err != nil {
+		if err := b.limiters.WaitLimiter(ctx, chatIDInt64); err != nil {
 			logger.LogError(err, "failed to wait for chat rate limiter")
 			return nil, err
 		}
@@ -59,41 +58,15 @@ func (b *rateLimitingBotClient) RequestWithContext(
 	return b.BotClient.RequestWithContext(ctx, method, params, data, opts)
 }
 
-func (b *rateLimitingBotClient) waitChatLimiter(ctx context.Context, chatID int64) error {
-	b.chatsMu.RLock()
-	defer b.chatsMu.RUnlock()
-	c, ok := b.chats[chatID]
-	if !ok {
-		// If the chat is not in the map, create a new chat and add it to the map.
-		c = chat.NewChat()
-		b.chats[chatID] = c
-	}
-	return c.WaitLimiter(ctx)
-}
-
-func (b *rateLimitingBotClient) removeStaleChats() {
-	b.chatsMu.Lock()
-	defer b.chatsMu.Unlock()
-	for chatID, c := range b.chats {
-		if c.IsStale() {
-			delete(b.chats, chatID)
-		}
-	}
-}
-
 // rateLimiterMiddleware is a simple method that we use to wrap the existing middleware with our new one.
 func rateLimiterMiddleware(b gotgbot.BotClient) gotgbot.BotClient {
-	c := &rateLimitingBotClient{
-		b,
-		make(map[int64]*chat.Chat),
-		&sync.RWMutex{},
+	return &rateLimitingBotClient{
+		BotClient: b,
+		limiters: chat.NewRateLimiterPool(
+			rate.Every(time.Second),
+			1,
+			time.Hour*4,
+			time.Hour*24,
+		),
 	}
-	go func() {
-		// Every 24 hours, check for stale chats and remove them from the map.
-		ticker := time.NewTicker(time.Hour * 24)
-		for range ticker.C {
-			c.removeStaleChats()
-		}
-	}()
-	return c
 }
