@@ -6,29 +6,28 @@ import (
 	"time"
 )
 
-type RateLimiter struct {
+type TokenBucketRateLimiter struct {
 	limiter  *rate.Limiter
 	lastUsed time.Time
 }
 
-func NewRateLimiter(limit rate.Limit, burst int) *RateLimiter {
-	return &RateLimiter{
+func NewTokenBucketRateLimiter(limit rate.Limit, burst int) *TokenBucketRateLimiter {
+	return &TokenBucketRateLimiter{
 		limiter:  rate.NewLimiter(limit, burst),
 		lastUsed: time.Now(),
 	}
 }
 
-func (c *RateLimiter) IsStale(d time.Duration) bool {
+func (c *TokenBucketRateLimiter) IsStale(d time.Duration) bool {
 	return time.Since(c.lastUsed) > d
 }
 
-func (c *RateLimiter) Wait(ctx context.Context) error {
+func (c *TokenBucketRateLimiter) Wait(ctx context.Context) error {
 	c.lastUsed = time.Now()
-	c.limiter.Reserve()
 	return c.limiter.Wait(ctx)
 }
 
-func (c *RateLimiter) GetWaitTime() time.Duration {
+func (c *TokenBucketRateLimiter) GetWaitTime() time.Duration {
 	c.lastUsed = time.Now()
 	reservation := c.limiter.Reserve()
 	defer reservation.Cancel()

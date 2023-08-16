@@ -1,7 +1,7 @@
 package main
 
 import (
-	"gorm.io/driver/sqlite"
+	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 	"my-telegram-bot/configuration"
@@ -9,15 +9,19 @@ import (
 	myLogger "my-telegram-bot/internals/logger"
 )
 
-// This is a helper script for automatically creating DB tables
 func main() {
-	config := configuration.Configure()
+	config := configuration.Configure([]string{"db_dsn"})
 
-	db, err := gorm.Open(sqlite.Open(config.GetDbDSN()), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Info),
-	})
+	db, err := gorm.Open(
+		postgres.New(postgres.Config{DSN: config.GetDbDSN(), PreferSimpleProtocol: true}),
+		&gorm.Config{
+			Logger: logger.Default.LogMode(logger.Info),
+		},
+	)
 	if err != nil {
 		myLogger.LogFatal(err, "failed to connect to database")
 	}
-	_ = db.AutoMigrate(&tables.TelegramUser{})
+	_ = db.AutoMigrate(
+		&tables.TelegramUser{},
+	)
 }

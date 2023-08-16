@@ -12,7 +12,7 @@ type Configuration struct {
 	*viper.Viper
 }
 
-func Configure() *Configuration {
+func Configure(requiredConfigVariables []string) *Configuration {
 	// configure viper
 	config := &Configuration{viper.New()}
 	config.SetEnvPrefix("my_bot")  // will be upper-cased automatically
@@ -26,39 +26,16 @@ func Configure() *Configuration {
 	}
 	config.SetDefault("webhook_port", 8080)
 	config.SetDefault("webapp_port", 8081)
-	checkRequiredEnvVariables(config)
+	checkRequiredConfigVariables(config, requiredConfigVariables)
 	return config
 }
 
-func checkRequiredEnvVariables(config *Configuration) {
-	// Check token is set in the environment variable.
-	token := config.GetString("token")
-	if token == "" {
-		logger.LogFatal(nil, "TOKEN configuration variable is empty")
-	}
-
-	// Check the webhook domain is set in the environment variable.
-	webhookDomain := config.GetString("webhook_domain")
-	if webhookDomain == "" {
-		logger.LogFatal(nil, "WEBHOOK_DOMAIN configuration variable is empty")
-	}
-
-	// Check the webhook domain is set in the environment variable.
-	webAppDomain := config.GetString("webapp_domain")
-	if webAppDomain == "" {
-		logger.LogFatal(nil, "WEBAPP_DOMAIN configuration variable is empty")
-	}
-
-	// Check the webhook secret is set in the environment variable.
-	webhookSecret := config.GetString("webhook_secret")
-	if webhookSecret == "" {
-		logger.LogFatal(nil, "WEBHOOK_SECRET configuration variable is empty")
-	}
-
-	// Check the static content path is set in the environment variable.
-	staticContentPath := config.GetString("static_content_path")
-	if staticContentPath == "" {
-		logger.LogFatal(nil, "STATIC_CONTENT_PATH configuration variable is empty")
+func checkRequiredConfigVariables(config *Configuration, requiredConfigVariables []string) {
+	for _, envVariable := range requiredConfigVariables {
+		// Check the config variable is set.
+		if config.GetString(envVariable) == "" {
+			logger.LogFatal(nil, envVariable+" configuration variable is empty")
+		}
 	}
 }
 
@@ -109,4 +86,19 @@ func (config *Configuration) GetStaticContentPath() string {
 // GetDbDSN returns the database connection string
 func (config *Configuration) GetDbDSN() string {
 	return config.GetString("db_dsn")
+}
+
+// GetRedisAddr returns the database connection string
+func (config *Configuration) GetRedisAddr() string {
+	return config.GetString("redis_addr")
+}
+
+// GetRedisUsername returns the database connection string
+func (config *Configuration) GetRedisUsername() string {
+	return config.GetString("redis_user")
+}
+
+// GetRedisPassword returns the database connection string
+func (config *Configuration) GetRedisPassword() string {
+	return config.GetString("redis_pass")
 }

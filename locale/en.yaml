@@ -1,14 +1,15 @@
 hello: |-
     Hello, %s!
 
-terms_and_conditions: |-
-    Please review our terms and conditions and accept them to start using our services.
+something_went_wrong: |-
+    Something went wrong, please try again later or contact our support team.
 
-terms_and_conditions_changed: |-
-    Our terms and conditions have been amended. Please review and accept them to continue using our services.
-
-successfully_accepted_terms: |-
-    Thank you for accepting our Terms and Conditions.
-
-failed_to_accept_terms: |-
-    Failed to accept Terms and Conditions, please try again.
+terms_and_conditions:
+    request: |-
+        Please review our terms and conditions and accept them to start using our services.
+    changed: |-
+        Our terms and conditions have been amended. Please review and accept them to continue using our services.
+    accepted: |-
+        Thank you for accepting our terms and conditions.
+    failed_to_accept: |-
+        Failed to accept terms and conditions, please try again.

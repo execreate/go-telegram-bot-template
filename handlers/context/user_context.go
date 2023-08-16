@@ -17,8 +17,7 @@ func NewUserContextHandler(usersCache *users_cache.TgUsersCache) *UserContextHan
 }
 
 func (usrCtx *UserContextHandler) CheckUpdate(_ *gotgbot.Bot, ctx *ext.Context) bool {
-	user := ctx.EffectiveUser
-	return user != nil
+	return ctx.EffectiveUser != nil
 }
 
 func (usrCtx *UserContextHandler) HandleUpdate(_ *gotgbot.Bot, ctx *ext.Context) error {

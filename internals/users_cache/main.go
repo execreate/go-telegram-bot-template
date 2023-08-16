@@ -7,6 +7,7 @@ import (
 	"my-telegram-bot/database/tables"
 	"my-telegram-bot/internals/logger"
 	"my-telegram-bot/internals/users_cache/user_container"
+	"strings"
 	"sync"
 	"time"
 )
@@ -29,6 +30,57 @@ func NewTgUsersCache(dbConn *gorm.DB, cleanUpInterval, staleThreshold time.Durat
 	go tgUsrCache.cleanUpRoutine(cleanUpInterval)
 
 	return tgUsrCache
+}
+
+func (tgUsrPool *TgUsersCache) GetByUsername(username string) (*tables.TelegramUser, error) {
+	tgUsrPool.mu.RLock()
+	defer tgUsrPool.mu.RUnlock()
+
+	if strings.HasPrefix(username, "@") {
+		username = username[1:]
+	}
+
+	// serve the user from database if it's not in memory
+	var telegramUser tables.TelegramUser
+
+	if err := tgUsrPool.dbConn.Where("username = ?", username).First(&telegramUser).Error; err != nil {
+		return nil, err
+	}
+
+	if _, ok := tgUsrPool.users[telegramUser.ID]; !ok {
+		go tgUsrPool.addNewUser(
+			telegramUser.ID,
+			user_container.NewTelegramUserContainer(&telegramUser),
+		)
+	}
+
+	return &telegramUser, nil
+}
+
+func (tgUsrPool *TgUsersCache) GetByID(userID int64) (*tables.TelegramUser, error) {
+	tgUsrPool.mu.RLock()
+	defer tgUsrPool.mu.RUnlock()
+
+	// try to serve from memory
+	if userContainer, ok := tgUsrPool.users[userID]; ok {
+		return userContainer.GetRaw(), nil
+	}
+
+	// serve the user from database if it's not in memory
+	var telegramUser tables.TelegramUser
+
+	if err := tgUsrPool.dbConn.Where("id = ?", userID).First(&telegramUser).Error; err != nil {
+		return nil, err
+	}
+
+	if _, ok := tgUsrPool.users[telegramUser.ID]; !ok {
+		go tgUsrPool.addNewUser(
+			telegramUser.ID,
+			user_container.NewTelegramUserContainer(&telegramUser),
+		)
+	}
+
+	return &telegramUser, nil
 }
 
 func (tgUsrPool *TgUsersCache) Get(effectiveUser *gotgbot.User) (*tables.TelegramUser, error) {
@@ -86,9 +138,9 @@ func (tgUsrPool *TgUsersCache) UserHasAcceptedTermsAndConditions(userID int64) e
 	if userContainer, ok := tgUsrPool.users[userID]; ok {
 		acceptedOn := time.Now()
 		err := tgUsrPool.dbConn.Model(&tables.TelegramUser{ID: userID}).Updates(
-			tables.TelegramUser{
-				AcceptedTermsAndConditionsOn:     acceptedOn,
-				AcceptedLatestTermsAndConditions: true,
+			map[string]interface{}{
+				"accepted_terms_and_conditions_on":     acceptedOn,
+				"accepted_latest_terms_and_conditions": true,
 			},
 		).Error
 		if err != nil {

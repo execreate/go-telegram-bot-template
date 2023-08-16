@@ -31,6 +31,10 @@ func (tgUser *TgUserContainer) IsStale(threshold time.Duration) bool {
 	return false
 }
 
+func (tgUser *TgUserContainer) GetRaw() *tables.TelegramUser {
+	return tgUser.user
+}
+
 func (tgUser *TgUserContainer) Get(effectiveUser *gotgbot.User) (*tables.TelegramUser, bool) {
 	tgUser.mu.Lock()
 	defer tgUser.mu.Unlock()
@@ -58,6 +62,6 @@ func (tgUser *TgUserContainer) TermsAndConditionsAccepted(acceptedOn time.Time) 
 	defer tgUser.mu.Unlock()
 
 	tgUser.lastActivity = time.Now()
-	tgUser.user.AcceptedTermsAndConditionsOn = acceptedOn
+	tgUser.user.AcceptedTermsAndConditionsOn = &acceptedOn
 	tgUser.user.AcceptedLatestTermsAndConditions = true
 }

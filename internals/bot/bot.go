@@ -4,11 +4,15 @@ import (
 	"fmt"
 	"github.com/PaulSonOfLars/gotgbot/v2"
 	"github.com/PaulSonOfLars/gotgbot/v2/ext"
-	"gorm.io/driver/sqlite"
+	"github.com/pkg/errors"
+	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"my-telegram-bot/database/tables"
+	"my-telegram-bot/internals/commands"
 	"my-telegram-bot/internals/logger"
 	"my-telegram-bot/internals/users_cache"
 	"net/http"
+	"strconv"
 	"time"
 )
 
@@ -26,6 +30,7 @@ type Config interface {
 type MyBot struct {
 	UsersCache *users_cache.TgUsersCache
 	DbConn     *gorm.DB
+	Settings   *Settings
 
 	bot        *gotgbot.Bot
 	updater    *ext.Updater
@@ -44,7 +49,7 @@ func NewBot(config Config) *MyBot {
 	b, err := gotgbot.NewBot(config.GetToken(), &gotgbot.BotOpts{
 		Client: http.Client{},
 		DefaultRequestOpts: &gotgbot.RequestOpts{
-			Timeout: time.Second * 15,
+			Timeout: time.Second * 60,
 			APIURL:  gotgbot.DefaultAPIURL,
 		},
 	})
@@ -71,16 +76,67 @@ func NewBot(config Config) *MyBot {
 	})
 	dispatcher := updater.Dispatcher
 
-	db, err := gorm.Open(sqlite.Open(config.GetDbDSN()), &gorm.Config{})
+	db, err := gorm.Open(postgres.New(postgres.Config{DSN: config.GetDbDSN(), PreferSimpleProtocol: true}))
 	if err != nil {
 		logger.LogFatal(err, "failed to connect to database")
 	}
 
 	usersCache := users_cache.NewTgUsersCache(db, 4*time.Hour, 4*24*time.Hour)
+	settings := &Settings{}
+
+	var confItems []tables.Config
+	if err := db.Find(&confItems).Error; err != nil {
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			logger.LogFatal(err, "failed to get config items from database")
+		}
+	}
+
+	if confItems != nil {
+		for _, item := range confItems {
+			switch item.Key {
+			case tables.MyChannelID:
+				if i, err := strconv.ParseInt(item.Value, 10, 64); err == nil {
+					settings.SetMyChannelID(i)
+				} else {
+					logger.LogErrorf(err, "failed to convert %s to integer", item.Value)
+				}
+			case tables.MyGroupID:
+				if i, err := strconv.ParseInt(item.Value, 10, 64); err == nil {
+					settings.SetMyGroupID(i)
+				} else {
+					logger.LogErrorf(err, "failed to convert %s to integer", item.Value)
+				}
+			}
+		}
+	}
+
+	var specialUsers []tables.TelegramUser
+	if err := db.Where("is_admin").Find(&specialUsers).Error; err != nil {
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			logger.LogFatal(err, "failed to get users from database")
+		}
+	}
+
+	chatIds := commands.NewSpecialChatIds()
+	for _, user := range specialUsers {
+		if user.IsAdmin {
+			chatIds.Admins = append(chatIds.Admins, user.ID)
+		}
+	}
+
+	ticker := time.NewTicker(time.Millisecond * 50)
+	defer ticker.Stop()
+	for _, val := range commands.GetCommands(chatIds) {
+		<-ticker.C
+		if success, err := b.SetMyCommands(val.Commands, val.Opts); err != nil || !success {
+			logger.LogFatal(err, "failed to set commands")
+		}
+	}
 
 	return &MyBot{
 		UsersCache: usersCache,
 		DbConn:     db,
+		Settings:   settings,
 
 		bot:        b,
 		updater:    updater,
@@ -109,6 +165,21 @@ func (b *MyBot) AddHandlerToGroup(h ext.Handler, group int) {
 // SendMessage sends a message with specified parameters
 func (b *MyBot) SendMessage(chatId int64, text string, opts *gotgbot.SendMessageOpts) (*gotgbot.Message, error) {
 	return b.bot.SendMessage(chatId, text, opts)
+}
+
+// SendDocument sends a document with specified parameters
+func (b *MyBot) SendDocument(chatId int64, document gotgbot.InputFile, opts *gotgbot.SendDocumentOpts) (*gotgbot.Message, error) {
+	return b.bot.SendDocument(chatId, document, opts)
+}
+
+// SendPhoto sends a photo with specified parameters
+func (b *MyBot) SendPhoto(chatId int64, photo gotgbot.InputFile, opts *gotgbot.SendPhotoOpts) (*gotgbot.Message, error) {
+	return b.bot.SendPhoto(chatId, photo, opts)
+}
+
+// SendMediaGroup sends a media group with specified parameters
+func (b *MyBot) SendMediaGroup(chatId int64, media []gotgbot.InputMedia, opts *gotgbot.SendMediaGroupOpts) ([]gotgbot.Message, error) {
+	return b.bot.SendMediaGroup(chatId, media, opts)
 }
 
 // AnswerWebAppQuery answers the web app query
@@ -159,4 +230,9 @@ func (b *MyBot) Run(serveGinServer func()) {
 // GetUsername returns the bot username
 func (b *MyBot) GetUsername() string {
 	return b.bot.User.Username
+}
+
+// GetChat returns the chat with the specified id
+func (b *MyBot) GetChat(id int64) (*gotgbot.Chat, error) {
+	return b.bot.GetChat(id, nil)
 }

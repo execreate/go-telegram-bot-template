@@ -8,7 +8,6 @@ import (
 	"my-telegram-bot/internals/chat"
 	"my-telegram-bot/internals/logger"
 	"strconv"
-	"strings"
 	"time"
 )
 
@@ -17,7 +16,8 @@ type rateLimitingBotClient struct {
 	// Inline existing client to call, allowing us to chain middlewares.
 	// Inlining also avoids us having to redefine helper methods part of the interface.
 	gotgbot.BotClient
-	limiters *chat.RateLimiterPool
+	privateChatLimiters *chat.TokenBucketRateLimiterPool
+	groupChatLimiters   *chat.SlidingWindowRateLimiterPool
 }
 
 // RequestWithContext defines a wrapper around existing RequestWithContext method.
@@ -43,17 +43,18 @@ func (b *rateLimitingBotClient) RequestWithContext(
 			logger.LogError(err, "failed to convert chatID to int64")
 			return nil, err
 		}
-		if err := b.limiters.WaitLimiter(ctx, chatIDInt64); err != nil {
-			logger.LogError(err, "failed to wait for chat rate limiter")
-			return nil, err
+		if GroupChats.IsGroupChat(chatIDInt64) {
+			if err := b.groupChatLimiters.WaitLimiter(ctx, chatIDInt64); err != nil {
+				logger.LogError(err, "failed to wait for group chat rate limiter")
+				return nil, err
+			}
+		} else {
+			if err := b.privateChatLimiters.WaitLimiter(ctx, chatIDInt64); err != nil {
+				logger.LogError(err, "failed to wait for private chat rate limiter")
+				return nil, err
+			}
 		}
 	}
-
-	// Allow sending the message without a reply
-	if strings.HasPrefix(method, "send") || method == "copyMessage" {
-		params["allow_sending_without_reply"] = "true"
-	}
-
 	// Call the next bot client instance in the middleware chain.
 	return b.BotClient.RequestWithContext(ctx, method, params, data, opts)
 }
@@ -62,9 +63,15 @@ func (b *rateLimitingBotClient) RequestWithContext(
 func rateLimiterMiddleware(b gotgbot.BotClient) gotgbot.BotClient {
 	return &rateLimitingBotClient{
 		BotClient: b,
-		limiters: chat.NewRateLimiterPool(
+		privateChatLimiters: chat.NewTokenBucketRateLimiterPool(
 			rate.Every(time.Second),
 			1,
+			time.Hour*4,
+			time.Hour*24,
+		),
+		groupChatLimiters: chat.NewSlidingWindowRateLimiterPool(
+			time.Minute,
+			20,
 			time.Hour*4,
 			time.Hour*24,
 		),

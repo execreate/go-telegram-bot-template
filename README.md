@@ -17,7 +17,7 @@ and run `ngrok start --config=ngrok.yaml bot_webhook web_app`.
 ## Features
 
 1. Viper for config handling
-2. Dockerfile
+2. Dockerfile + Compose
 3. Ngrok for easy development
 4. Logging
 5. WebApp setup
@@ -25,8 +25,6 @@ and run `ngrok start --config=ngrok.yaml bot_webhook web_app`.
 
 ### Migrations
 
-Check out [Goose](https://github.com/pressly/goose) for an installation guide and docs.
-
 ```shell
-goose -dir ./database/migrations/sqlite sqlite ./test.db up
+goose -dir ./database/migrations/postgres postgres "user=user password=pass dbname=my_db host=localhost port=5434 sslmode=disable" up
 ```

@@ -43,7 +43,7 @@ func (srv *Server) validateWebAppQuery(c *gin.Context, successCallBack func(*gin
 		}
 		webAppUser.QueryID = queryValues.Get("query_id")
 
-		texts, err := locale.GetTranslations(webAppUser.LanguageCode)
+		texts, err := locale.GetTextTranslations(webAppUser.LanguageCode)
 		if err != nil {
 			logger.LogError(err, "failed to get translations")
 			c.Data(

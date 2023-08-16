@@ -8,7 +8,8 @@ import (
 )
 
 var (
-	locales       = map[string]*viper.Viper{}
+	textLocales   = map[string]*viper.Viper{}
+	cmdLocales    = map[string]*viper.Viper{}
 	localesConfig *viper.Viper
 )
 
@@ -23,10 +24,13 @@ func init() {
 	}
 }
 
-// GetTranslations parses the locale file and returns the viper config.
-func GetTranslations(locale string) (*viper.Viper, error) {
-	if locales[locale] != nil {
-		return locales[locale], nil
+// GetTextTranslations parses the locale file and returns the viper config.
+func GetTextTranslations(locale string) (*viper.Viper, error) {
+	if locale == "" {
+		return GetTextTranslations("en")
+	}
+	if textLocales[locale] != nil {
+		return textLocales[locale], nil
 	}
 	config := viper.New()
 	config.SetConfigName(locale)
@@ -34,18 +38,46 @@ func GetTranslations(locale string) (*viper.Viper, error) {
 	config.AddConfigPath(localesConfig.GetString("locale-path"))
 	err := config.ReadInConfig()
 	if err != nil {
-		logger.LogErrorf(
-			err,
-			"failed to get translations for locale %v at path %s",
+		logger.LogWarningf(
+			"failed to get text translations for locale %v at path %s",
 			locale,
 			localesConfig.GetString("locale-path"),
 		)
 		// fallback locale is English
 		if locale != "en" {
-			return GetTranslations("en")
+			return GetTextTranslations("en")
 		}
 		return nil, err
 	}
-	locales[locale] = config
+	textLocales[locale] = config
+	return config, nil
+}
+
+// GetCmdTranslations parses the locale file and returns the viper config.
+func GetCmdTranslations(locale string) (*viper.Viper, error) {
+	if locale == "" {
+		return GetCmdTranslations("en")
+	}
+	if cmdLocales[locale] != nil {
+		return cmdLocales[locale], nil
+	}
+	config := viper.New()
+	config.SetConfigName(locale + "_commands")
+	config.SetConfigType("yaml")
+	config.AddConfigPath(localesConfig.GetString("locale-path"))
+	err := config.ReadInConfig()
+	if err != nil {
+		logger.LogWarningf(
+			"failed to get command translations for locale %v at path %s",
+			locale,
+			localesConfig.GetString("locale-path"),
+		)
+		// fallback locale is English
+		if locale != "en" {
+			return GetCmdTranslations("en")
+		}
+		return nil, err
+	}
+	cmdLocales[locale] = config
 	return config, nil
 }

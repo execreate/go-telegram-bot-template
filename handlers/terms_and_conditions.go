@@ -35,8 +35,13 @@ func NewTermsAndConditionsHandler(bot *bot.MyBot, srv *gin_server.Server) *Terms
 }
 
 func (handler *TermsAndConditionsHandler) CheckUpdate(_ *gotgbot.Bot, ctx *ext.Context) bool {
+	if ctx.EffectiveUser == nil {
+		return false
+	}
 	user := ctx.Data["db_user"].(*tables.TelegramUser)
-	return !user.AcceptedLatestTermsAndConditions || user.AcceptedTermsAndConditionsOn.IsZero()
+	return ctx.EffectiveChat != nil && ctx.EffectiveChat.Type == "private" &&
+		(!user.AcceptedLatestTermsAndConditions ||
+			user.AcceptedTermsAndConditionsOn == nil || user.AcceptedTermsAndConditionsOn.IsZero())
 }
 
 func (handler *TermsAndConditionsHandler) HandleUpdate(b *gotgbot.Bot, ctx *ext.Context) error {
@@ -58,9 +63,11 @@ func (handler *TermsAndConditionsHandler) HandleUpdate(b *gotgbot.Bot, ctx *ext.
 		},
 	}
 
-	replyMsgText := texts.GetString("terms_and_conditions")
-	if !user.AcceptedTermsAndConditionsOn.IsZero() && !user.AcceptedLatestTermsAndConditions {
-		replyMsgText = texts.GetString("terms_and_conditions_changed")
+	replyMsgText := texts.GetString("terms_and_conditions.request")
+	if user.AcceptedTermsAndConditionsOn != nil &&
+		!user.AcceptedTermsAndConditionsOn.IsZero() &&
+		!user.AcceptedLatestTermsAndConditions {
+		replyMsgText = texts.GetString("terms_and_conditions.changed")
 	}
 
 	_, err := ctx.EffectiveMessage.Reply(b, replyMsgText, opts)
@@ -83,12 +90,12 @@ func (handler *TermsAndConditionsHandler) handleAcceptTermsAndConditions(
 ) {
 	if err := handler.bot.UsersCache.UserHasAcceptedTermsAndConditions(webAppUser.ID); err != nil {
 		logger.LogError(err, "failed to update user's terms and conditions acceptance status")
-		_, err = handler.bot.SendMessage(webAppUser.ID, texts.GetString("failed_to_accept_terms"), nil)
+		_, err = handler.bot.SendMessage(webAppUser.ID, texts.GetString("terms_and_conditions.failed_to_accept"), nil)
 		if err != nil {
 			logger.LogError(err, "failed to send message to user")
 		}
 	} else {
-		_, err := handler.bot.SendMessage(webAppUser.ID, texts.GetString("successfully_accepted_terms"), nil)
+		_, err := handler.bot.SendMessage(webAppUser.ID, texts.GetString("terms_and_conditions.accepted"), nil)
 		if err != nil {
 			logger.LogError(err, "failed to send message to user")
 		}
