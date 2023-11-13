@@ -1,10 +1,5 @@
 package tables
 
-import (
-	"database/sql/driver"
-	"gorm.io/gorm"
-)
-
 type ConfigKey string
 
 const (
@@ -12,19 +7,10 @@ const (
 	MyGroupID   ConfigKey = "my_group_id"
 )
 
-func (ck *ConfigKey) Scan(value interface{}) error {
-	*ck = ConfigKey(value.(string))
-	return nil
-}
-
-func (ck ConfigKey) Value() (driver.Value, error) {
-	return string(ck), nil
-}
-
 // Config keeps config values
 type Config struct {
-	gorm.Model
+	SoftDeleteModel
 
-	Key   ConfigKey `gorm:"size:250;uniqueIndex;not null"`
-	Value string    `gorm:"size:250;not null"`
+	Key   ConfigKey `db:"key"`
+	Value string    `db:"value"`
 }

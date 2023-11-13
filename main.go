@@ -2,7 +2,6 @@ package main
 
 import (
 	tgbotHandlers "github.com/PaulSonOfLars/gotgbot/v2/ext/handlers"
-	"github.com/PaulSonOfLars/gotgbot/v2/ext/handlers/filters/message"
 	"my-telegram-bot/configuration"
 	"my-telegram-bot/handlers"
 	"my-telegram-bot/handlers/context"
@@ -26,6 +25,8 @@ func main() {
 	}
 	config := configuration.Configure(requiredConfig)
 	myBot := bot.NewBot(config)
+	defer myBot.CleanUp()
+
 	srv := gin_server.NewGinServer(config)
 
 	// enrich context data
@@ -35,9 +36,9 @@ func main() {
 	// terms and conditions group
 	myBot.AddHandlerToGroup(handlers.NewTermsAndConditionsHandler(myBot, srv), 0)
 
-	// other handlers
-	myBot.AddHandlerToGroup(tgbotHandlers.NewMessage(message.Equal("/start"), handlers.Hello), 2)
-	myBot.AddHandlerToGroup(tgbotHandlers.NewMessage(message.Equal("/my_id"), handlers.MyID), 2)
+	// standalone commands group
+	myBot.AddHandlerToGroup(tgbotHandlers.NewCommand("start", handlers.Hello), 2)
+	myBot.AddHandlerToGroup(tgbotHandlers.NewCommand("my_id", handlers.MyID), 2)
 
 	// start bot
 	myBot.Run(srv.RunServer)

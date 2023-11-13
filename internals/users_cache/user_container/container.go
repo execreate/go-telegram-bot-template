@@ -43,13 +43,29 @@ func (tgUser *TgUserContainer) Get(effectiveUser *gotgbot.User) (*tables.Telegra
 
 	userDetailsHaveChanged := tgUser.user.FirstName != effectiveUser.FirstName ||
 		tgUser.user.LastName != effectiveUser.LastName ||
-		tgUser.user.Username != effectiveUser.Username ||
 		tgUser.user.LanguageCode != effectiveUser.LanguageCode
+
+	if tgUser.user.Username.Valid && effectiveUser.Username == "" {
+		userDetailsHaveChanged = true
+		tgUser.user.Username.Valid = false
+		tgUser.user.Username.String = ""
+	}
+
+	if !tgUser.user.Username.Valid && effectiveUser.Username != "" {
+		userDetailsHaveChanged = true
+		tgUser.user.Username.Valid = true
+		tgUser.user.Username.String = effectiveUser.Username
+	}
 
 	if userDetailsHaveChanged {
 		tgUser.user.FirstName = effectiveUser.FirstName
 		tgUser.user.LastName = effectiveUser.LastName
-		tgUser.user.Username = effectiveUser.Username
+		tgUser.user.Username.String = effectiveUser.Username
+		if len(tgUser.user.Username.String) > 0 {
+			tgUser.user.Username.Valid = true
+		} else {
+			tgUser.user.Username.Valid = false
+		}
 		tgUser.user.LanguageCode = effectiveUser.LanguageCode
 	}
 
@@ -62,6 +78,7 @@ func (tgUser *TgUserContainer) TermsAndConditionsAccepted(acceptedOn time.Time) 
 	defer tgUser.mu.Unlock()
 
 	tgUser.lastActivity = time.Now()
-	tgUser.user.AcceptedTermsAndConditionsOn = &acceptedOn
+	tgUser.user.AcceptedTermsAndConditionsOn.Time = acceptedOn
+	tgUser.user.AcceptedTermsAndConditionsOn.Valid = true
 	tgUser.user.AcceptedLatestTermsAndConditions = true
 }

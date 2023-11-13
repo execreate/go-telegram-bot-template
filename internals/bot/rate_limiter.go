@@ -4,8 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/PaulSonOfLars/gotgbot/v2"
+	"github.com/pkg/errors"
 	"golang.org/x/time/rate"
-	"my-telegram-bot/internals/chat"
+	"my-telegram-bot/internals/limiters"
 	"my-telegram-bot/internals/logger"
 	"strconv"
 	"time"
@@ -16,8 +17,8 @@ type rateLimitingBotClient struct {
 	// Inline existing client to call, allowing us to chain middlewares.
 	// Inlining also avoids us having to redefine helper methods part of the interface.
 	gotgbot.BotClient
-	privateChatLimiters *chat.TokenBucketRateLimiterPool
-	groupChatLimiters   *chat.SlidingWindowRateLimiterPool
+	privateChatLimiters *limiters.TokenBucketRateLimiterPool
+	groupChatLimiters   *limiters.SlidingWindowRateLimiterPool
 }
 
 // RequestWithContext defines a wrapper around existing RequestWithContext method.
@@ -40,17 +41,17 @@ func (b *rateLimitingBotClient) RequestWithContext(
 	if chatID, ok := params["chat_id"]; ok && len(chatID) > 0 {
 		chatIDInt64, err := strconv.ParseInt(chatID, 10, 64)
 		if err != nil {
-			logger.LogError(err, "failed to convert chatID to int64")
+			logger.Log.Error().Stack().Err(errors.Wrap(err, "wrapped error")).Msg("failed to convert chatID to int64")
 			return nil, err
 		}
 		if GroupChats.IsGroupChat(chatIDInt64) {
 			if err := b.groupChatLimiters.WaitLimiter(ctx, chatIDInt64); err != nil {
-				logger.LogError(err, "failed to wait for group chat rate limiter")
+				logger.Log.Error().Stack().Err(errors.Wrap(err, "wrapped error")).Msg("failed to wait for group chat rate limiter")
 				return nil, err
 			}
 		} else {
 			if err := b.privateChatLimiters.WaitLimiter(ctx, chatIDInt64); err != nil {
-				logger.LogError(err, "failed to wait for private chat rate limiter")
+				logger.Log.Error().Stack().Err(errors.Wrap(err, "wrapped error")).Msg("failed to wait for private chat rate limiter")
 				return nil, err
 			}
 		}
@@ -63,13 +64,13 @@ func (b *rateLimitingBotClient) RequestWithContext(
 func rateLimiterMiddleware(b gotgbot.BotClient) gotgbot.BotClient {
 	return &rateLimitingBotClient{
 		BotClient: b,
-		privateChatLimiters: chat.NewTokenBucketRateLimiterPool(
+		privateChatLimiters: limiters.NewTokenBucketRateLimiterPool(
 			rate.Every(time.Second),
 			1,
 			time.Hour*4,
 			time.Hour*24,
 		),
-		groupChatLimiters: chat.NewSlidingWindowRateLimiterPool(
+		groupChatLimiters: limiters.NewSlidingWindowRateLimiterPool(
 			time.Minute,
 			20,
 			time.Hour*4,

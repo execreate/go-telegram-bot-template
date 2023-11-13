@@ -1,22 +1,21 @@
 package tables
 
 import (
-	"gorm.io/gorm"
-	"time"
+	"database/sql"
 )
 
 type TelegramUser struct {
-	gorm.Model
+	SoftDeleteModel
 
-	ID           int64  `gorm:"primaryKey;autoIncrement:false"`
-	FirstName    string `gorm:"size:250"`
-	LastName     string `gorm:"size:250"`
-	Username     string `gorm:"size:250;uniqueIndex"`
-	LanguageCode string `gorm:"size:3"`
-	IsAdmin      bool
+	FirstName    string         `db:"first_name"`
+	LastName     string         `db:"last_name"`
+	Username     sql.NullString `db:"username"`
+	LanguageCode string         `db:"language_code"`
 
-	AcceptedTermsAndConditionsOn     *time.Time
-	AcceptedLatestTermsAndConditions bool
+	IsAdmin bool `db:"is_admin"`
+
+	AcceptedTermsAndConditionsOn     sql.NullTime `db:"accepted_terms_and_conditions_on"`
+	AcceptedLatestTermsAndConditions bool         `db:"accepted_latest_terms_and_conditions"`
 }
 
 func (u *TelegramUser) FullName() string {

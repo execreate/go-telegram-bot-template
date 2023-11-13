@@ -6,14 +6,13 @@ require (
 	github.com/PaulSonOfLars/gotgbot/v2 v2.0.0-rc.20
 	github.com/gin-gonic/gin v1.9.1
 	github.com/goccy/go-json v0.10.2
+	github.com/jackc/pgx/v5 v5.4.3
 	github.com/pkg/errors v0.9.1
 	github.com/redis/go-redis/v9 v9.0.5
 	github.com/rs/zerolog v1.29.1
 	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.15.0
 	golang.org/x/time v0.3.0
-	gorm.io/driver/postgres v1.5.2
-	gorm.io/gorm v1.25.1
 )
 
 require (
@@ -30,9 +29,7 @@ require (
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20221227161230-091c0ba34f0a // indirect
-	github.com/jackc/pgx/v5 v5.3.1 // indirect
-	github.com/jinzhu/inflection v1.0.0 // indirect
-	github.com/jinzhu/now v1.1.5 // indirect
+	github.com/jackc/puddle/v2 v2.2.1 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.5 // indirect
 	github.com/leodido/go-urn v1.2.4 // indirect
@@ -52,6 +49,7 @@ require (
 	golang.org/x/arch v0.3.0 // indirect
 	golang.org/x/crypto v0.10.0 // indirect
 	golang.org/x/net v0.11.0 // indirect
+	golang.org/x/sync v0.1.0 // indirect
 	golang.org/x/sys v0.9.0 // indirect
 	golang.org/x/text v0.10.0 // indirect
 	google.golang.org/protobuf v1.31.0 // indirect

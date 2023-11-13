@@ -6,7 +6,7 @@ services:
         environment:
             REDIS_PASSWORD: password
         ports:
-            - "6377:6379"
+            - "6375:6379"
 
     postgres-db:
         image: bitnami/postgresql:latest
@@ -15,4 +15,4 @@ services:
             POSTGRESQL_PASSWORD: pass
             POSTGRESQL_DATABASE: my_db
         ports:
-            - "5434:5432"
+            - "5437:5432"

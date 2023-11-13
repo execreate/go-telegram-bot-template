@@ -36,7 +36,7 @@ func NewGinServer(config Config) *Server {
 }
 
 func (srv *Server) RunServer() {
-	logger.LogInfo("starting gin server...")
+	logger.Log.Info().Msg("starting gin server...")
 	err := srv.router.Run(fmt.Sprintf(":%d", srv.config.GetWebAppPort()))
 	if err != nil {
 		panic(err)
@@ -58,7 +58,7 @@ func (srv *Server) AddWebAppRequestHandler(
 			srv.validateWebAppQuery(c, handlerFn)
 		})
 	default:
-		logger.LogPanic(nil, "unknown handler method")
+		logger.Log.Panic().Msg("unknown handler method")
 	}
 }
 
@@ -67,4 +67,8 @@ func (srv *Server) AddStaticFileHandler(fileName string) {
 		"/"+fileName,
 		srv.config.GetStaticContentPath()+"/"+fileName,
 	)
+}
+
+func (srv *Server) AddStaticFolderHandler(urlPath, folderPath string) {
+	srv.router.Static(urlPath, srv.config.GetStaticContentPath()+"/"+folderPath)
 }

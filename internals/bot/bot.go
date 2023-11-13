@@ -1,12 +1,13 @@
 package bot
 
 import (
+	"context"
 	"fmt"
 	"github.com/PaulSonOfLars/gotgbot/v2"
 	"github.com/PaulSonOfLars/gotgbot/v2/ext"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pkg/errors"
-	"gorm.io/driver/postgres"
-	"gorm.io/gorm"
 	"my-telegram-bot/database/tables"
 	"my-telegram-bot/internals/commands"
 	"my-telegram-bot/internals/logger"
@@ -29,7 +30,7 @@ type Config interface {
 
 type MyBot struct {
 	UsersCache *users_cache.TgUsersCache
-	DbConn     *gorm.DB
+	DB         *pgxpool.Pool
 	Settings   *Settings
 
 	bot        *gotgbot.Bot
@@ -55,7 +56,7 @@ func NewBot(config Config) *MyBot {
 	})
 
 	if err != nil {
-		logger.LogFatal(err, "failed to create new bot")
+		logger.Log.Fatal().Stack().Err(errors.Wrap(err, "wrapped error")).Msg("failed to create new bot")
 	}
 
 	b.UseMiddleware(rateLimiterMiddleware)
@@ -65,78 +66,96 @@ func NewBot(config Config) *MyBot {
 		Dispatcher: ext.NewDispatcher(&ext.DispatcherOpts{
 			// If an error is returned by a handler, log it and continue going.
 			Error: func(b *gotgbot.Bot, ctx *ext.Context, err error) ext.DispatcherAction {
-				logger.LogError(err, "an error occurred while handling update")
+				logger.Log.Error().Stack().Err(errors.Wrap(err, "wrapped error")).Msg("an error occurred while handling update")
 				return ext.DispatcherActionEndGroups
 			},
 			Panic: func(b *gotgbot.Bot, ctx *ext.Context, r interface{}) {
-				logger.LogPanic(r, "a panic occurred while handling update")
+				logger.Log.Error().Any("panic_reason", r).Msg("a panic occurred while handling update")
 			},
 			MaxRoutines: ext.DefaultMaxRoutines,
 		}),
 	})
 	dispatcher := updater.Dispatcher
 
-	db, err := gorm.Open(postgres.New(postgres.Config{DSN: config.GetDbDSN(), PreferSimpleProtocol: true}))
+	dbPool, err := pgxpool.New(context.Background(), config.GetDbDSN())
 	if err != nil {
-		logger.LogFatal(err, "failed to connect to database")
+		logger.Log.Fatal().Stack().Err(errors.Wrap(err, "wrapped error")).Msg("failed to connect to database")
 	}
 
-	usersCache := users_cache.NewTgUsersCache(db, 4*time.Hour, 4*24*time.Hour)
+	usersCache := users_cache.NewTgUsersCache(dbPool, 4*time.Hour, 4*24*time.Hour)
 	settings := &Settings{}
 
-	var confItems []tables.Config
-	if err := db.Find(&confItems).Error; err != nil {
-		if !errors.Is(err, gorm.ErrRecordNotFound) {
-			logger.LogFatal(err, "failed to get config items from database")
+	if rows, err := dbPool.Query(
+		context.Background(),
+		//language=SQL
+		"select key, value from configs where deleted_at is null",
+	); err == nil {
+		confItems, err := pgx.CollectRows(rows, pgx.RowToStructByNameLax[tables.Config])
+		if err != nil {
+			logger.Log.Fatal().Stack().Err(errors.Wrap(err, "wrapped error")).Msg("failed to collect config items from returned rows")
 		}
-	}
 
-	if confItems != nil {
-		for _, item := range confItems {
-			switch item.Key {
-			case tables.MyChannelID:
-				if i, err := strconv.ParseInt(item.Value, 10, 64); err == nil {
-					settings.SetMyChannelID(i)
-				} else {
-					logger.LogErrorf(err, "failed to convert %s to integer", item.Value)
-				}
-			case tables.MyGroupID:
-				if i, err := strconv.ParseInt(item.Value, 10, 64); err == nil {
-					settings.SetMyGroupID(i)
-				} else {
-					logger.LogErrorf(err, "failed to convert %s to integer", item.Value)
+		if confItems != nil {
+			for _, item := range confItems {
+				switch item.Key {
+				case tables.MyChannelID:
+					if i, err := strconv.ParseInt(item.Value, 10, 64); err == nil {
+						settings.SetMyChannelID(i)
+					} else {
+						logger.Log.Fatal().Stack().Err(errors.Wrap(err, "wrapped error")).Str(
+							"value", item.Value).Msg("failed to convert value to integer")
+					}
+				case tables.MyGroupID:
+					if i, err := strconv.ParseInt(item.Value, 10, 64); err == nil {
+						settings.SetMyGroupID(i)
+					} else {
+						logger.Log.Fatal().Stack().Err(errors.Wrap(err, "wrapped error")).Str(
+							"value", item.Value).Msg("failed to convert value to integer")
+					}
 				}
 			}
 		}
-	}
-
-	var specialUsers []tables.TelegramUser
-	if err := db.Where("is_admin").Find(&specialUsers).Error; err != nil {
-		if !errors.Is(err, gorm.ErrRecordNotFound) {
-			logger.LogFatal(err, "failed to get users from database")
+	} else {
+		if !errors.Is(err, pgx.ErrNoRows) {
+			logger.Log.Fatal().Stack().Err(errors.Wrap(err, "wrapped error")).Msg("failed to get config items from database")
 		}
 	}
 
-	chatIds := commands.NewSpecialChatIds()
-	for _, user := range specialUsers {
-		if user.IsAdmin {
-			chatIds.Admins = append(chatIds.Admins, user.ID)
+	if rows, err := dbPool.Query(
+		context.Background(),
+		//language=SQL
+		`select id,
+       		is_admin,
+       		language_code
+		from telegram_users
+        where deleted_at is null and is_admin`,
+	); err == nil {
+		specialUsers, err := pgx.CollectRows(rows, pgx.RowToAddrOfStructByNameLax[tables.TelegramUser])
+		if err != nil {
+			logger.Log.Fatal().Stack().Err(errors.Wrap(err, "wrapped error")).Msg(
+				"failed to collect telegram users from returned rows")
 		}
-	}
 
-	ticker := time.NewTicker(time.Millisecond * 50)
-	defer ticker.Stop()
-	for _, val := range commands.GetCommands(chatIds) {
-		<-ticker.C
-		if success, err := b.SetMyCommands(val.Commands, val.Opts); err != nil || !success {
-			logger.LogFatal(err, "failed to set commands")
+		ticker := time.NewTicker(time.Millisecond * 50)
+		defer ticker.Stop()
+		for _, val := range commands.GetCommands(specialUsers) {
+			<-ticker.C
+			if success, err := b.SetMyCommands(val.Commands, val.Opts); err != nil || !success {
+				logger.Log.Fatal().Stack().Err(errors.Wrap(err, "wrapped error")).Msg(
+					"failed to set commands")
+			}
+		}
+	} else {
+		if !errors.Is(err, pgx.ErrNoRows) {
+			logger.Log.Fatal().Stack().Err(errors.Wrap(err, "wrapped error")).Msg(
+				"failed to get users from database")
 		}
 	}
 
 	return &MyBot{
 		UsersCache: usersCache,
-		DbConn:     db,
 		Settings:   settings,
+		DB:         dbPool,
 
 		bot:        b,
 		updater:    updater,
@@ -165,6 +184,11 @@ func (b *MyBot) AddHandlerToGroup(h ext.Handler, group int) {
 // SendMessage sends a message with specified parameters
 func (b *MyBot) SendMessage(chatId int64, text string, opts *gotgbot.SendMessageOpts) (*gotgbot.Message, error) {
 	return b.bot.SendMessage(chatId, text, opts)
+}
+
+// EditMessageText edits a message with specified parameters
+func (b *MyBot) EditMessageText(text string, opts *gotgbot.EditMessageTextOpts) (*gotgbot.Message, bool, error) {
+	return b.bot.EditMessageText(text, opts)
 }
 
 // SendDocument sends a document with specified parameters
@@ -205,7 +229,7 @@ func (b *MyBot) Run(serveGinServer func()) {
 
 	err := b.updater.StartWebhook(b.bot, b.webhookPath, webhookOpts)
 	if err != nil {
-		logger.LogFatal(err, "failed to start webhook")
+		logger.Log.Fatal().Stack().Err(errors.Wrap(err, "wrapped error")).Msg("failed to start webhook")
 	}
 
 	err = b.updater.SetAllBotWebhooks(b.webhookDomain, &gotgbot.SetWebhookOpts{
@@ -214,16 +238,26 @@ func (b *MyBot) Run(serveGinServer func()) {
 		SecretToken:        webhookOpts.SecretToken,
 	})
 	if err != nil {
-		logger.LogFatal(err, "failed to set webhook")
+		logger.Log.Fatal().Stack().Err(errors.Wrap(err, "wrapped error")).Msg("failed to set webhook")
 	}
 
-	logger.LogInfof("Webhooks for %s have been started...", b.bot.User.Username)
+	logger.Log.Info().Str("username", b.bot.User.Username).Msg("Webhooks have been started...")
 
 	if serveGinServer != nil {
 		serveGinServer()
 	} else {
 		// Idle, to keep updates coming in, and avoid bot stopping.
 		b.updater.Idle()
+	}
+}
+
+// CleanUp cleans up bot resources
+func (b *MyBot) CleanUp() {
+	b.DB.Close()
+	if _, err := b.bot.DeleteWebhook(&gotgbot.DeleteWebhookOpts{
+		DropPendingUpdates: true,
+	}); err != nil {
+		logger.Log.Warn().Msg("failed to delete the webhook")
 	}
 }
 

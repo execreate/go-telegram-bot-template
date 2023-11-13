@@ -26,5 +26,9 @@ and run `ngrok start --config=ngrok.yaml bot_webhook web_app`.
 ### Migrations
 
 ```shell
-goose -dir ./database/migrations/postgres postgres "user=user password=pass dbname=my_db host=localhost port=5434 sslmode=disable" up
+goose -dir ./database/migrations/postgres postgres "user=user password=pass dbname=my_db host=localhost port=5437 sslmode=disable" up
+```
+
+```shell
+goose -s -dir ./database/migrations/postgres create migration_comment sql
 ```

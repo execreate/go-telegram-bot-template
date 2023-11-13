@@ -1,9 +1,8 @@
-package chat
+package limiters
 
 import (
 	"context"
 	"fmt"
-	"github.com/pkg/errors"
 	"my-telegram-bot/internals/logger"
 	"sync"
 	"time"
@@ -19,10 +18,10 @@ type SlidingWindowRateLimiter struct {
 
 func NewSlidingWindowRateLimiter(window time.Duration, maxN int) *SlidingWindowRateLimiter {
 	if maxN <= 0 {
-		logger.LogFatalf(errors.New("maxN must be greater than 0"), "unacceptable maxN: %d", maxN)
+		logger.Log.Fatal().Int("maxN", maxN).Msg("maxN must be greater than 0")
 	}
 	if window <= 0 {
-		logger.LogFatalf(errors.New("window must be greater than 0"), "unacceptable window: %d", window)
+		logger.Log.Fatal().Dur("window", window).Msg("window must be greater than 0")
 	}
 
 	return &SlidingWindowRateLimiter{

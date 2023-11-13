@@ -2,83 +2,52 @@ package commands
 
 import (
 	"github.com/PaulSonOfLars/gotgbot/v2"
+	"github.com/pkg/errors"
 	"github.com/spf13/viper"
+	"my-telegram-bot/database/tables"
 	"my-telegram-bot/internals/logger"
 	"my-telegram-bot/locale"
 )
 
-type Settings struct {
-	Commands []gotgbot.BotCommand
-	Opts     *gotgbot.SetMyCommandsOpts
-}
-
-const DefaultKey = "general"
-
-func getCommands(cmdKey string, includeDefaultKey bool) []gotgbot.BotCommand {
+func getCommandsMap(txtKeys []string, lang string) map[string]string {
 	var texts *viper.Viper
-	if val, err := locale.GetCmdTranslations("en"); err != nil {
-		logger.LogFatalf(err, "failed to get %s command texts", cmdKey)
+	if val, err := locale.GetCmdTranslations(lang); err != nil {
+		logger.Log.Fatal().Stack().Err(errors.Wrap(err, "wrapped error")).Msg(
+			"failed to get command texts")
 	} else {
 		texts = val
 	}
 
-	commands := make([]gotgbot.BotCommand, 0)
+	result := make(map[string]string)
 
-	if includeDefaultKey {
-		for k, v := range texts.GetStringMapString(DefaultKey) {
-			commands = append(commands, gotgbot.BotCommand{
-				Command:     k,
-				Description: v,
-			})
+	for i := 0; i < len(txtKeys); i++ {
+		for k, v := range texts.GetStringMapString(txtKeys[i]) {
+			result[k] = v
 		}
 	}
 
-	for k, v := range texts.GetStringMapString(cmdKey) {
-		commands = append(commands, gotgbot.BotCommand{
+	return result
+}
+
+func getCommandsSlice(cmdMap map[string]string) []gotgbot.BotCommand {
+	result := make([]gotgbot.BotCommand, 0, len(cmdMap))
+
+	for k, v := range cmdMap {
+		result = append(result, gotgbot.BotCommand{
 			Command:     k,
 			Description: v,
 		})
 	}
 
-	return commands
+	return result
 }
 
-func GetChatSpecificCommands(txtKey string, chatIDs []int64, includeDefaultKey bool) (result []Settings) {
-	commands := getCommands(txtKey, includeDefaultKey)
-	result = make([]Settings, len(chatIDs))
-	for i, chatID := range chatIDs {
-		opts := &gotgbot.SetMyCommandsOpts{
-			Scope: &gotgbot.BotCommandScopeChat{
-				ChatId: chatID,
-			},
-		}
-		result[i] = Settings{
-			Commands: commands,
-			Opts:     opts,
-		}
-	}
-	return
-}
+func GetUserCommands(usr *tables.TelegramUser) []gotgbot.BotCommand {
+	txtKeys := []string{DefaultKey}
 
-func GetChatMemberSpecificCommands(
-	txtKey string,
-	chatID int64,
-	memberIDs []int64,
-	includeDefaultKey bool,
-) (result []Settings) {
-	commands := getCommands(txtKey, includeDefaultKey)
-	result = make([]Settings, len(memberIDs))
-	for i, memberID := range memberIDs {
-		opts := &gotgbot.SetMyCommandsOpts{
-			Scope: &gotgbot.BotCommandScopeChatMember{
-				ChatId: chatID,
-				UserId: memberID,
-			},
-		}
-		result[i] = Settings{
-			Commands: commands,
-			Opts:     opts,
-		}
+	if usr.IsAdmin {
+		txtKeys = append(txtKeys, "admin")
 	}
-	return
+
+	return getCommandsSlice(getCommandsMap(txtKeys, usr.LanguageCode))
 }

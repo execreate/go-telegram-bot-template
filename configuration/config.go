@@ -1,6 +1,7 @@
 package configuration
 
 import (
+	"github.com/pkg/errors"
 	"github.com/spf13/viper"
 	"my-telegram-bot/internals/logger"
 	"os"
@@ -22,10 +23,13 @@ func Configure(requiredConfigVariables []string) *Configuration {
 	config.SetConfigType("yaml")   // REQUIRED if the config file does not have the extension in the name
 	err := config.ReadInConfig()   // Find and read the config file
 	if err != nil {                // Handle errors reading the config file
-		logger.LogInfof("error reading the config file (%v), fallback to env variables", err)
+		logger.Log.Info().Stack().Err(
+			errors.Wrap(err, "wrapped error"),
+		).Msg("error reading the config file fallback to env variables")
 	}
 	config.SetDefault("webhook_port", 8080)
 	config.SetDefault("webapp_port", 8081)
+	config.SetDefault("environment", "production")
 	checkRequiredConfigVariables(config, requiredConfigVariables)
 	return config
 }
@@ -34,7 +38,7 @@ func checkRequiredConfigVariables(config *Configuration, requiredConfigVariables
 	for _, envVariable := range requiredConfigVariables {
 		// Check the config variable is set.
 		if config.GetString(envVariable) == "" {
-			logger.LogFatal(nil, envVariable+" configuration variable is empty")
+			logger.Log.Fatal().Str("configVar", envVariable).Msg("required configuration variable is empty")
 		}
 	}
 }
@@ -101,4 +105,9 @@ func (config *Configuration) GetRedisUsername() string {
 // GetRedisPassword returns the database connection string
 func (config *Configuration) GetRedisPassword() string {
 	return config.GetString("redis_pass")
+}
+
+// GetEnvironment returns the environment
+func (config *Configuration) GetEnvironment() string {
+	return config.GetString("environment")
 }

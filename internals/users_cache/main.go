@@ -1,9 +1,12 @@
 package users_cache
 
 import (
+	"context"
+	"database/sql"
 	"github.com/PaulSonOfLars/gotgbot/v2"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pkg/errors"
-	"gorm.io/gorm"
 	"my-telegram-bot/database/tables"
 	"my-telegram-bot/internals/logger"
 	"my-telegram-bot/internals/users_cache/user_container"
@@ -13,15 +16,15 @@ import (
 )
 
 type TgUsersCache struct {
-	dbConn         *gorm.DB
+	dbPool         *pgxpool.Pool
 	users          map[int64]*user_container.TgUserContainer
 	mu             sync.RWMutex
 	staleThreshold time.Duration
 }
 
-func NewTgUsersCache(dbConn *gorm.DB, cleanUpInterval, staleThreshold time.Duration) *TgUsersCache {
+func NewTgUsersCache(dbPool *pgxpool.Pool, cleanUpInterval, staleThreshold time.Duration) *TgUsersCache {
 	tgUsrCache := &TgUsersCache{
-		dbConn:         dbConn,
+		dbPool:         dbPool,
 		users:          make(map[int64]*user_container.TgUserContainer),
 		staleThreshold: staleThreshold,
 	}
@@ -40,10 +43,22 @@ func (tgUsrPool *TgUsersCache) GetByUsername(username string) (*tables.TelegramU
 		username = username[1:]
 	}
 
-	// serve the user from database if it's not in memory
-	var telegramUser tables.TelegramUser
+	rows, _ := tgUsrPool.dbPool.Query(
+		context.Background(),
+		//language=SQL
+		"select * from telegram_users where deleted_at is null and username = $1",
+		username,
+	)
+	defer rows.Close()
 
-	if err := tgUsrPool.dbConn.Where("username = ?", username).First(&telegramUser).Error; err != nil {
+	telegramUser, err := pgx.CollectOneRow(rows, pgx.RowToStructByName[tables.TelegramUser])
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			logger.Log.Warn().Str("username", username).Msg("user with given username not found")
+		} else {
+			logger.Log.Error().Stack().Err(errors.Wrap(err, "wrapped error")).Str(
+				"username", username).Msg("failed to query for a user")
+		}
 		return nil, err
 	}
 
@@ -67,9 +82,22 @@ func (tgUsrPool *TgUsersCache) GetByID(userID int64) (*tables.TelegramUser, erro
 	}
 
 	// serve the user from database if it's not in memory
-	var telegramUser tables.TelegramUser
+	rows, _ := tgUsrPool.dbPool.Query(
+		context.Background(),
+		//language=SQL
+		"select * from telegram_users where deleted_at is null and id = $1",
+		userID,
+	)
+	defer rows.Close()
 
-	if err := tgUsrPool.dbConn.Where("id = ?", userID).First(&telegramUser).Error; err != nil {
+	telegramUser, err := pgx.CollectOneRow(rows, pgx.RowToStructByName[tables.TelegramUser])
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			logger.Log.Warn().Int64("user_id", userID).Msg("user not found")
+		} else {
+			logger.Log.Error().Stack().Err(errors.Wrap(err, "wrapped error")).Int64(
+				"user_id", userID).Msg("failed to query for a user")
+		}
 		return nil, err
 	}
 
@@ -92,33 +120,116 @@ func (tgUsrPool *TgUsersCache) Get(effectiveUser *gotgbot.User) (*tables.Telegra
 		user, needsUpdate := userContainer.Get(effectiveUser)
 
 		if needsUpdate {
-			go func(dbConn *gorm.DB, user *tables.TelegramUser) {
-				if err := dbConn.Save(user).Error; err != nil {
-					logger.LogError(err, "failed to update user details")
+			go func(db *pgxpool.Pool, user *tables.TelegramUser) {
+				ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+				defer cancel()
+				var err error
+				if user.Username.Valid {
+					_, err = db.Exec(
+						ctx,
+						`update telegram_users 
+						set first_name = $1, last_name = $2, username = $3, language_code = $4
+						where id = $5`,
+						user.FirstName,
+						user.LastName,
+						user.Username,
+						user.LanguageCode,
+						user.ID,
+					)
+				} else {
+					_, err = db.Exec(
+						ctx,
+						`update telegram_users 
+						set first_name = $1, last_name = $2, username = NULL, language_code = $3
+						where id = $4`,
+						user.FirstName,
+						user.LastName,
+						user.LanguageCode,
+						user.ID,
+					)
 				}
-			}(tgUsrPool.dbConn, user)
+				if err != nil {
+					logger.Log.Error().Stack().Err(errors.Wrap(err, "wrapped error")).Msg("failed to update user details")
+				}
+			}(tgUsrPool.dbPool, user)
 		}
 
 		return user, nil
 	}
 
 	// serve the user from database if it's not in memory
-	var telegramUser tables.TelegramUser
-	err := tgUsrPool.dbConn.Where("id = ?", effectiveUser.Id).First(&telegramUser).Error
+	rows, _ := tgUsrPool.dbPool.Query(
+		context.Background(),
+		//language=SQL
+		"select * from telegram_users where deleted_at is null and id = $1",
+		effectiveUser.Id,
+	)
+	defer rows.Close()
+
+	telegramUser, err := pgx.CollectOneRow(rows, pgx.RowToStructByName[tables.TelegramUser])
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			telegramUser = tables.TelegramUser{
-				ID:           effectiveUser.Id,
-				FirstName:    effectiveUser.FirstName,
-				LastName:     effectiveUser.LastName,
-				Username:     effectiveUser.Username,
-				LanguageCode: effectiveUser.LanguageCode,
+		if errors.Is(err, pgx.ErrNoRows) {
+			now := time.Now()
+			nullUsername := sql.NullString{String: effectiveUser.Username, Valid: false}
+			if len(nullUsername.String) > 0 {
+				nullUsername.Valid = true
 			}
-			err = tgUsrPool.dbConn.Create(&telegramUser).Error
-			if err != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+			defer cancel()
+			if _, err := tgUsrPool.dbPool.Exec(
+				ctx,
+				//language=SQL
+				`insert into telegram_users (
+                        id,
+                        created_at,
+                        updated_at,
+                        deleted_at,
+                        first_name,
+                        last_name,
+                        username,
+                        language_code,
+                        is_admin,
+                        accepted_terms_and_conditions_on,
+                        accepted_latest_terms_and_conditions
+                    ) values (
+						$1,
+                    	$2,
+						$3,
+                    	null,
+						$4,
+                    	$5,
+						$6,
+                    	$7,
+                    	false,
+                    	null,
+                    	false
+					)`,
+				effectiveUser.Id,
+				now,
+				now,
+				effectiveUser.FirstName,
+				effectiveUser.LastName,
+				nullUsername,
+				effectiveUser.LanguageCode,
+			); err != nil {
+				logger.Log.Error().Stack().Err(errors.Wrap(err, "wrapped error")).Msg("failed to insert new user details into database")
 				return nil, err
 			}
+
+			telegramUser = tables.TelegramUser{
+				SoftDeleteModel: tables.SoftDeleteModel{
+					ID:        effectiveUser.Id,
+					CreatedAt: now,
+					UpdatedAt: now,
+				},
+				FirstName:    effectiveUser.FirstName,
+				LastName:     effectiveUser.LastName,
+				Username:     nullUsername,
+				LanguageCode: effectiveUser.LanguageCode,
+			}
 		} else {
+			logger.Log.Error().Stack().Err(errors.Wrap(err, "wrapped error")).Int64(
+				"user_id", effectiveUser.Id).Msg("failed to query for a user")
 			return nil, err
 		}
 	}
@@ -137,13 +248,18 @@ func (tgUsrPool *TgUsersCache) UserHasAcceptedTermsAndConditions(userID int64) e
 
 	if userContainer, ok := tgUsrPool.users[userID]; ok {
 		acceptedOn := time.Now()
-		err := tgUsrPool.dbConn.Model(&tables.TelegramUser{ID: userID}).Updates(
-			map[string]interface{}{
-				"accepted_terms_and_conditions_on":     acceptedOn,
-				"accepted_latest_terms_and_conditions": true,
-			},
-		).Error
-		if err != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+		defer cancel()
+		if _, err := tgUsrPool.dbPool.Exec(
+			ctx,
+			//language=SQL
+			`update telegram_users
+			set accepted_terms_and_conditions_on = $1, accepted_latest_terms_and_conditions = true
+			where id = $2`,
+			acceptedOn,
+			userID,
+		); err != nil {
+			logger.Log.Error().Stack().Err(errors.Wrap(err, "wrapped error")).Msg("failed to update user details in database")
 			return err
 		}
 		userContainer.TermsAndConditionsAccepted(acceptedOn)

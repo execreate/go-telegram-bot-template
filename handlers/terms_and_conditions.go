@@ -4,6 +4,7 @@ import (
 	"github.com/PaulSonOfLars/gotgbot/v2"
 	"github.com/PaulSonOfLars/gotgbot/v2/ext"
 	"github.com/gin-gonic/gin"
+	"github.com/pkg/errors"
 	"github.com/spf13/viper"
 	"my-telegram-bot/database/tables"
 	"my-telegram-bot/internals/bot"
@@ -39,9 +40,7 @@ func (handler *TermsAndConditionsHandler) CheckUpdate(_ *gotgbot.Bot, ctx *ext.C
 		return false
 	}
 	user := ctx.Data["db_user"].(*tables.TelegramUser)
-	return ctx.EffectiveChat != nil && ctx.EffectiveChat.Type == "private" &&
-		(!user.AcceptedLatestTermsAndConditions ||
-			user.AcceptedTermsAndConditionsOn == nil || user.AcceptedTermsAndConditionsOn.IsZero())
+	return ctx.EffectiveChat != nil && ctx.EffectiveChat.Type == "private" && !user.AcceptedLatestTermsAndConditions
 }
 
 func (handler *TermsAndConditionsHandler) HandleUpdate(b *gotgbot.Bot, ctx *ext.Context) error {
@@ -64,9 +63,7 @@ func (handler *TermsAndConditionsHandler) HandleUpdate(b *gotgbot.Bot, ctx *ext.
 	}
 
 	replyMsgText := texts.GetString("terms_and_conditions.request")
-	if user.AcceptedTermsAndConditionsOn != nil &&
-		!user.AcceptedTermsAndConditionsOn.IsZero() &&
-		!user.AcceptedLatestTermsAndConditions {
+	if user.AcceptedTermsAndConditionsOn.Valid && !user.AcceptedLatestTermsAndConditions {
 		replyMsgText = texts.GetString("terms_and_conditions.changed")
 	}
 
@@ -89,21 +86,21 @@ func (handler *TermsAndConditionsHandler) handleAcceptTermsAndConditions(
 	texts *viper.Viper,
 ) {
 	if err := handler.bot.UsersCache.UserHasAcceptedTermsAndConditions(webAppUser.ID); err != nil {
-		logger.LogError(err, "failed to update user's terms and conditions acceptance status")
+		logger.Log.Error().Stack().Err(errors.Wrap(err, "wrapped error")).Msg("failed to update user's terms and conditions acceptance status")
 		_, err = handler.bot.SendMessage(webAppUser.ID, texts.GetString("terms_and_conditions.failed_to_accept"), nil)
 		if err != nil {
-			logger.LogError(err, "failed to send message to user")
+			logger.Log.Error().Stack().Err(errors.Wrap(err, "wrapped error")).Msg("failed to send message to user")
 		}
 	} else {
 		_, err := handler.bot.SendMessage(webAppUser.ID, texts.GetString("terms_and_conditions.accepted"), nil)
 		if err != nil {
-			logger.LogError(err, "failed to send message to user")
+			logger.Log.Error().Stack().Err(errors.Wrap(err, "wrapped error")).Msg("failed to send message to user")
 		}
 	}
 
 	c.Data(
 		http.StatusOK,
 		"text/plain; charset=utf-8",
-		[]byte("validation success, user is authenticated"),
+		[]byte("success"),
 	)
 }

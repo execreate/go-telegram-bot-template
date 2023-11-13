@@ -1,34 +1,37 @@
 package commands
 
-import "github.com/PaulSonOfLars/gotgbot/v2"
+import (
+	"github.com/PaulSonOfLars/gotgbot/v2"
+	"my-telegram-bot/database/tables"
+)
 
-type SpecialChatIds struct {
-	Admins []int64
+type Settings struct {
+	Commands []gotgbot.BotCommand
+	Opts     *gotgbot.SetMyCommandsOpts
 }
 
-func NewSpecialChatIds() *SpecialChatIds {
-	return &SpecialChatIds{
-		Admins: make([]int64, 0),
-	}
-}
+const DefaultKey = "general"
 
-func GetCommands(ids *SpecialChatIds) (result []Settings) {
-	result = make([]Settings, 0, 1+len(ids.Admins))
+func GetCommands(specialUsers []*tables.TelegramUser) []Settings {
+	result := make([]Settings, 0, len(specialUsers)+1)
 
 	result = append(result, Settings{
-		Commands: getCommands(DefaultKey, false),
+		Commands: getCommandsSlice(getCommandsMap([]string{DefaultKey}, "en")),
 		Opts: &gotgbot.SetMyCommandsOpts{
 			Scope: &gotgbot.BotCommandScopeAllPrivateChats{},
 		},
 	})
 
-	for _, settings := range GetChatSpecificCommands(
-		"admin",
-		ids.Admins,
-		true,
-	) {
-		result = append(result, settings)
+	for _, usr := range specialUsers {
+		result = append(result, Settings{
+			Commands: GetUserCommands(usr),
+			Opts: &gotgbot.SetMyCommandsOpts{
+				Scope: &gotgbot.BotCommandScopeChat{
+					ChatId: usr.ID,
+				},
+			},
+		})
 	}
 
-	return
+	return result
 }

@@ -4,6 +4,7 @@ import (
 	"github.com/PaulSonOfLars/gotgbot/v2/ext"
 	"github.com/gin-gonic/gin"
 	"github.com/goccy/go-json"
+	"github.com/pkg/errors"
 	"github.com/spf13/viper"
 	"my-telegram-bot/internals/logger"
 	"my-telegram-bot/locale"
@@ -38,14 +39,14 @@ func (srv *Server) validateWebAppQuery(c *gin.Context, successCallBack func(*gin
 				"text/plain; charset=utf-8",
 				[]byte("Internal Server Error"),
 			)
-			logger.LogError(err, "failed to unmarshal user")
+			logger.Log.Error().Stack().Err(errors.Wrap(err, "wrapped error")).Msg("failed to unmarshal user")
 			return
 		}
 		webAppUser.QueryID = queryValues.Get("query_id")
 
 		texts, err := locale.GetTextTranslations(webAppUser.LanguageCode)
 		if err != nil {
-			logger.LogError(err, "failed to get translations")
+			logger.Log.Error().Stack().Err(errors.Wrap(err, "wrapped error")).Msg("failed to get translations")
 			c.Data(
 				http.StatusInternalServerError,
 				"text/plain; charset=utf-8",
