@@ -25,8 +25,14 @@ and run `ngrok start --config=ngrok.yaml bot_webhook web_app`.
 
 ### Migrations
 
+Install goose:
+
 ```shell
-goose -dir ./database/migrations/postgres postgres "user=user password=pass dbname=my_db host=localhost port=5437 sslmode=disable" up
+go install github.com/pressly/goose/v3/cmd/goose@latest
+```
+
+```shell
+goose -dir ./database/migrations/postgres postgres "user=user password=pass dbname=my_db host=localhost port=5432 sslmode=disable" up
 ```
 
 ```shell

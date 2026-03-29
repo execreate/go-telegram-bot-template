@@ -1,18 +1,28 @@
-version: "3"
-
 services:
-    redis-db:
-        image: bitnami/redis:7.0
+    redis:
+        image: redis:7
         environment:
             REDIS_PASSWORD: password
         ports:
             - "6375:6379"
 
-    postgres-db:
-        image: bitnami/postgresql:latest
+    postgres:
+        image: postgres:17
         environment:
-            POSTGRESQL_USERNAME: user
-            POSTGRESQL_PASSWORD: pass
-            POSTGRESQL_DATABASE: my_db
+            POSTGRES_USER: "user"
+            POSTGRES_PASSWORD: "pass"
+            POSTGRES_DB: "my_db"
+        network_mode: host
+        restart: always
         ports:
-            - "5437:5432"
+            - "5432:5432"
+        volumes:
+            - postgres_data:/var/lib/postgresql/data
+        healthcheck:
+            test: [ "CMD-SHELL", "pg_isready -U user -d my_db" ]
+            interval: 3s
+            timeout: 3s
+            retries: 10
+
+volumes:
+    postgres_data:

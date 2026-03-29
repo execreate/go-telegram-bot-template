@@ -3,13 +3,15 @@ package bot
 import (
 	"context"
 	"encoding/json"
-	"github.com/PaulSonOfLars/gotgbot/v2"
-	"github.com/pkg/errors"
-	"golang.org/x/time/rate"
-	"my-telegram-bot/internals/limiters"
-	"my-telegram-bot/internals/logger"
+	"net/http"
 	"strconv"
 	"time"
+
+	"github.com/PaulSonOfLars/gotgbot/v2"
+	"github.com/execreate/go-telegram-bot-template/internals/limiters"
+	"github.com/execreate/go-telegram-bot-template/internals/logger"
+	"go.uber.org/zap"
+	"golang.org/x/time/rate"
 )
 
 // rateLimitingBotClient middleware wraps the existing BotClient to add a new behavior.
@@ -21,7 +23,7 @@ type rateLimitingBotClient struct {
 	groupChatLimiters   *limiters.SlidingWindowRateLimiterPool
 }
 
-// RequestWithContext defines a wrapper around existing RequestWithContext method.
+// RequestWithContext defines a wrapper around the existing RequestWithContext method.
 // Note: this is the only method that needs redefining.
 // RequestWithContext allows sending a POST request to the telegram bot API with an existing context.
 //   - ctx: the timeout contexts to be used.
@@ -32,38 +34,47 @@ type rateLimitingBotClient struct {
 //     Timeout handling is the responsibility of the caller/context owner.
 func (b *rateLimitingBotClient) RequestWithContext(
 	ctx context.Context,
+	token string,
 	method string,
-	params map[string]string,
-	data map[string]gotgbot.NamedReader,
+	params map[string]any,
 	opts *gotgbot.RequestOpts,
 ) (json.RawMessage, error) {
 	// if we are interacting with a specific chat_id, we wait for the chat rate limiter.
-	if chatID, ok := params["chat_id"]; ok && len(chatID) > 0 {
-		chatIDInt64, err := strconv.ParseInt(chatID, 10, 64)
-		if err != nil {
-			logger.Log.Error().Stack().Err(errors.Wrap(err, "wrapped error")).Msg("failed to convert chatID to int64")
-			return nil, err
-		}
-		if GroupChats.IsGroupChat(chatIDInt64) {
-			if err := b.groupChatLimiters.WaitLimiter(ctx, chatIDInt64); err != nil {
-				logger.Log.Error().Stack().Err(errors.Wrap(err, "wrapped error")).Msg("failed to wait for group chat rate limiter")
+	if maybeChatID, ok := params["chat_id"]; ok {
+		if chatID, ok := maybeChatID.(string); ok {
+			chatIDInt64, err := strconv.ParseInt(chatID, 10, 64)
+			if err != nil {
+				logger.Log.Error("failed to convert chatID to int64", zap.Error(err))
 				return nil, err
 			}
-		} else {
-			if err := b.privateChatLimiters.WaitLimiter(ctx, chatIDInt64); err != nil {
-				logger.Log.Error().Stack().Err(errors.Wrap(err, "wrapped error")).Msg("failed to wait for private chat rate limiter")
-				return nil, err
+			if GroupChats.IsGroupChat(chatIDInt64) {
+				if err := b.groupChatLimiters.WaitLimiter(ctx, chatIDInt64); err != nil {
+					logger.Log.Error("failed to wait for group chat rate limiter", zap.Error(err))
+					return nil, err
+				}
+			} else {
+				if err := b.privateChatLimiters.WaitLimiter(ctx, chatIDInt64); err != nil {
+					logger.Log.Error("failed to wait for private chat rate limiter", zap.Error(err))
+					return nil, err
+				}
 			}
 		}
 	}
 	// Call the next bot client instance in the middleware chain.
-	return b.BotClient.RequestWithContext(ctx, method, params, data, opts)
+	return b.BotClient.RequestWithContext(ctx, token, method, params, opts)
 }
 
-// rateLimiterMiddleware is a simple method that we use to wrap the existing middleware with our new one.
-func rateLimiterMiddleware(b gotgbot.BotClient) gotgbot.BotClient {
+// newRateLimiterMiddleware is to initialize rate-limiting middleware for the bot client.
+func newRateLimiterMiddleware() gotgbot.BotClient {
 	return &rateLimitingBotClient{
-		BotClient: b,
+		BotClient: &gotgbot.BaseBotClient{
+			Client:             http.Client{},
+			UseTestEnvironment: false,
+			DefaultRequestOpts: &gotgbot.RequestOpts{
+				Timeout: gotgbot.DefaultTimeout,
+				APIURL:  gotgbot.DefaultAPIURL,
+			},
+		},
 		privateChatLimiters: limiters.NewTokenBucketRateLimiterPool(
 			rate.Every(time.Second),
 			1,

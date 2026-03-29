@@ -14,8 +14,8 @@ type TelegramUser struct {
 
 	IsAdmin bool `db:"is_admin"`
 
-	AcceptedTermsAndConditionsOn     sql.NullTime `db:"accepted_terms_and_conditions_on"`
-	AcceptedLatestTermsAndConditions bool         `db:"accepted_latest_terms_and_conditions"`
+	AcceptedTermsAndConditionsOn      sql.NullTime   `db:"accepted_terms_and_conditions_on"`
+	AcceptedTermsAndConditionsVersion sql.NullString `db:"accepted_terms_and_conditions_version"`
 }
 
 func (u *TelegramUser) FullName() string {
@@ -24,4 +24,11 @@ func (u *TelegramUser) FullName() string {
 		name += " " + u.LastName
 	}
 	return name
+}
+
+func (u *TelegramUser) MustAcceptTermsAndConditions(latestVersion string) bool {
+	if u.AcceptedTermsAndConditionsVersion.Valid {
+		return u.AcceptedTermsAndConditionsVersion.String != latestVersion
+	}
+	return true
 }

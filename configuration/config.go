@@ -1,11 +1,12 @@
 package configuration
 
 import (
-	"github.com/pkg/errors"
-	"github.com/spf13/viper"
-	"my-telegram-bot/internals/logger"
 	"os"
 	"strings"
+
+	"github.com/execreate/go-telegram-bot-template/internals/logger"
+	"github.com/spf13/viper"
+	"go.uber.org/zap"
 )
 
 // Configuration keeps bot configuration settings
@@ -23,22 +24,25 @@ func Configure(requiredConfigVariables []string) *Configuration {
 	config.SetConfigType("yaml")   // REQUIRED if the config file does not have the extension in the name
 	err := config.ReadInConfig()   // Find and read the config file
 	if err != nil {                // Handle errors reading the config file
-		logger.Log.Info().Stack().Err(
-			errors.Wrap(err, "wrapped error"),
-		).Msg("error reading the config file fallback to env variables")
+		logger.Log.Info(
+			"error reading the configuration file fallback to env variables",
+			zap.Error(err),
+		)
 	}
 	config.SetDefault("webhook_port", 8080)
 	config.SetDefault("webapp_port", 8081)
-	config.SetDefault("environment", "production")
 	checkRequiredConfigVariables(config, requiredConfigVariables)
 	return config
 }
 
 func checkRequiredConfigVariables(config *Configuration, requiredConfigVariables []string) {
-	for _, envVariable := range requiredConfigVariables {
+	for _, variableName := range requiredConfigVariables {
 		// Check the config variable is set.
-		if config.GetString(envVariable) == "" {
-			logger.Log.Fatal().Str("configVar", envVariable).Msg("required configuration variable is empty")
+		if config.GetString(variableName) == "" {
+			logger.Log.Fatal(
+				"required configuration variable is empty",
+				zap.String("config_var_name", variableName),
+			)
 		}
 	}
 }
@@ -56,7 +60,7 @@ func (config *Configuration) GetWebhookDomain() string {
 
 // GetWebhookPath returns the webhook path
 func (config *Configuration) GetWebhookPath() string {
-	webhookPath := "webhook_" + strings.Split(config.GetToken(), ":")[0]
+	webhookPath := config.GetToken() + "/webhook"
 	return webhookPath
 }
 
@@ -107,7 +111,11 @@ func (config *Configuration) GetRedisPassword() string {
 	return config.GetString("redis_pass")
 }
 
-// GetEnvironment returns the environment
-func (config *Configuration) GetEnvironment() string {
-	return config.GetString("environment")
+func (config *Configuration) GetRedisUseSSL() bool {
+	return config.GetString("redis_use_ssl") != ""
+}
+
+// GetDebug returns true if the app is running in debug mode
+func (config *Configuration) GetDebug() bool {
+	return config.GetString("debug") != "" && os.Getenv("DEBUG") != ""
 }

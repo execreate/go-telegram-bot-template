@@ -1,10 +1,11 @@
 package user_container
 
 import (
-	"github.com/PaulSonOfLars/gotgbot/v2"
-	"my-telegram-bot/database/tables"
 	"sync"
 	"time"
+
+	"github.com/PaulSonOfLars/gotgbot/v2"
+	"github.com/execreate/go-telegram-bot-template/database/tables"
 )
 
 type TgUserContainer struct {
@@ -72,13 +73,14 @@ func (tgUser *TgUserContainer) Get(effectiveUser *gotgbot.User) (*tables.Telegra
 	return tgUser.user, userDetailsHaveChanged
 }
 
-// TermsAndConditionsAccepted method modifies the underlying user object
-func (tgUser *TgUserContainer) TermsAndConditionsAccepted(acceptedOn time.Time) {
+// TermsAndConditionsAccepted method updates the user's accepted terms and conditions info
+func (tgUser *TgUserContainer) TermsAndConditionsAccepted(acceptedOn time.Time, version string) {
 	tgUser.mu.Lock()
 	defer tgUser.mu.Unlock()
 
 	tgUser.lastActivity = time.Now()
 	tgUser.user.AcceptedTermsAndConditionsOn.Time = acceptedOn
 	tgUser.user.AcceptedTermsAndConditionsOn.Valid = true
-	tgUser.user.AcceptedLatestTermsAndConditions = true
+	tgUser.user.AcceptedTermsAndConditionsVersion.String = version
+	tgUser.user.AcceptedTermsAndConditionsVersion.Valid = true
 }

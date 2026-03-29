@@ -2,10 +2,11 @@ package handlers
 
 import (
 	"fmt"
+
 	"github.com/PaulSonOfLars/gotgbot/v2"
 	"github.com/PaulSonOfLars/gotgbot/v2/ext"
-	"github.com/pkg/errors"
-	"my-telegram-bot/internals/logger"
+	"github.com/execreate/go-telegram-bot-template/internals/logger"
+	"go.uber.org/zap"
 )
 
 // MyID replies to a command by sending user and chat ID information.
@@ -23,9 +24,10 @@ func MyID(b *gotgbot.Bot, ctx *ext.Context) error {
 			chatTitle = chat.Title
 			linkedChatID = chat.LinkedChatId
 		} else {
-			logger.Log.Warn().Stack().Err(
-				errors.Wrap(err, "wrapped error"),
-			).Msg("failed to get chat info")
+			logger.Log.Warn(
+				"failed to get chat info",
+				zap.Error(err),
+			)
 			chatID = ctx.EffectiveChat.Id
 			chatType = ctx.EffectiveChat.Type
 			chatTitle = ctx.EffectiveChat.Title

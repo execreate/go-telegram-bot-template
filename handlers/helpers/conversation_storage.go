@@ -3,12 +3,15 @@ package helpers
 import (
 	"context"
 	"crypto/tls"
+	"time"
+
+	"errors"
+
 	"github.com/PaulSonOfLars/gotgbot/v2/ext"
 	"github.com/PaulSonOfLars/gotgbot/v2/ext/handlers/conversation"
-	"github.com/pkg/errors"
+	"github.com/execreate/go-telegram-bot-template/internals/logger"
 	"github.com/redis/go-redis/v9"
-	"my-telegram-bot/internals/logger"
-	"time"
+	"go.uber.org/zap"
 )
 
 const defaultExpirationTime = time.Hour * 24 * 3
@@ -19,7 +22,7 @@ type RedisConfig interface {
 	GetRedisAddr() string
 	GetRedisUsername() string
 	GetRedisPassword() string
-	GetEnvironment() string
+	GetRedisUseSSL() bool
 }
 
 type RedisConversationStorage struct {
@@ -35,13 +38,13 @@ func NewRedisConversationStorage(config RedisConfig, botUsername string) *RedisC
 	}
 
 	var redisTlsConfig *tls.Config
-	if config.GetEnvironment() == "production" {
+	if config.GetRedisUseSSL() {
 		redisTlsConfig = &tls.Config{
 			MinVersion: tls.VersionTLS12,
 		}
 	}
 
-	logger.Log.Info().Str("redis_addr", config.GetRedisAddr()).Msg("connecting to redis")
+	logger.Log.Info("connecting to redis", zap.String("redis_addr", config.GetRedisAddr()))
 	conn := redis.NewClient(&redis.Options{
 		Addr:       config.GetRedisAddr(),
 		Username:   config.GetRedisUsername(),
@@ -53,9 +56,9 @@ func NewRedisConversationStorage(config RedisConfig, botUsername string) *RedisC
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
 	if res, err := conn.Ping(ctx).Result(); err != nil {
-		logger.Log.Fatal().Err(err).Msg("failed to ping redis")
+		logger.Log.Fatal("failed to ping redis", zap.Error(err))
 	} else {
-		logger.Log.Info().Str("response", res).Msg("redis connection success")
+		logger.Log.Info("redis connection success", zap.String("redis_response", res))
 	}
 
 	cachedStorage = &RedisConversationStorage{
@@ -69,24 +72,30 @@ func NewRedisConversationStorage(config RedisConfig, botUsername string) *RedisC
 // Note that this is checked at each incoming message, so may be a bottleneck for some implementations.
 //
 // If the key is not found (and as such, this conversation has not yet started), this method should return the
-// KeyNotFound error.
+// ErrKeyNotFound error.
 func (storage *RedisConversationStorage) Get(ctx *ext.Context) (*conversation.State, error) {
-	key := conversation.StateKey(ctx, storage.keyStrategy)
+	key, err := conversation.StateKey(ctx, storage.keyStrategy)
+	if err != nil {
+		return nil, err
+	}
 	if state, err := storage.redisClient.Get(context.Background(), key).Result(); err == nil {
 		return &conversation.State{Key: state}, nil
 	} else if errors.Is(err, redis.Nil) {
-		return nil, conversation.KeyNotFound
+		return nil, conversation.ErrKeyNotFound
 	} else {
-		logger.Log.Error().Stack().Err(errors.Wrap(err, "wrapped error")).Msg("failed to get key from redis")
+		logger.Log.Error("failed to get key from redis", zap.Error(err))
 		return nil, err
 	}
 }
 
 // Set updates the conversation state.
 func (storage *RedisConversationStorage) Set(ctx *ext.Context, state conversation.State) error {
-	key := conversation.StateKey(ctx, storage.keyStrategy)
+	key, err := conversation.StateKey(ctx, storage.keyStrategy)
+	if err != nil {
+		return err
+	}
 	if err := storage.redisClient.Set(context.Background(), key, state.Key, defaultExpirationTime).Err(); err != nil {
-		logger.Log.Error().Stack().Err(errors.Wrap(err, "wrapped error")).Msg("failed to set key to redis")
+		logger.Log.Error("failed to set key to redis", zap.Error(err))
 		return err
 	}
 	return nil
@@ -94,9 +103,12 @@ func (storage *RedisConversationStorage) Set(ctx *ext.Context, state conversatio
 
 // Delete ends the conversation, removing the key from the storage.
 func (storage *RedisConversationStorage) Delete(ctx *ext.Context) error {
-	key := conversation.StateKey(ctx, storage.keyStrategy)
+	key, err := conversation.StateKey(ctx, storage.keyStrategy)
+	if err != nil {
+		return err
+	}
 	if err := storage.redisClient.Del(context.Background(), key).Err(); err != nil {
-		logger.Log.Error().Stack().Err(errors.Wrap(err, "wrapped error")).Msg("failed to delete key from redis")
+		logger.Log.Error("failed to delete key from redis", zap.Error(err))
 		return err
 	}
 	return nil

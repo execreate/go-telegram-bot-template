@@ -3,18 +3,20 @@ package bot
 import (
 	"context"
 	"fmt"
-	"github.com/PaulSonOfLars/gotgbot/v2"
-	"github.com/PaulSonOfLars/gotgbot/v2/ext"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/pkg/errors"
-	"my-telegram-bot/database/tables"
-	"my-telegram-bot/internals/commands"
-	"my-telegram-bot/internals/logger"
-	"my-telegram-bot/internals/users_cache"
-	"net/http"
 	"strconv"
 	"time"
+
+	"errors"
+
+	"github.com/PaulSonOfLars/gotgbot/v2"
+	"github.com/PaulSonOfLars/gotgbot/v2/ext"
+	"github.com/execreate/go-telegram-bot-template/database/tables"
+	"github.com/execreate/go-telegram-bot-template/internals/commands"
+	"github.com/execreate/go-telegram-bot-template/internals/logger"
+	"github.com/execreate/go-telegram-bot-template/internals/users_cache"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"go.uber.org/zap"
 )
 
 type Config interface {
@@ -48,38 +50,28 @@ type MyBot struct {
 
 func NewBot(config Config) *MyBot {
 	b, err := gotgbot.NewBot(config.GetToken(), &gotgbot.BotOpts{
-		Client: http.Client{},
-		DefaultRequestOpts: &gotgbot.RequestOpts{
-			Timeout: time.Second * 60,
-			APIURL:  gotgbot.DefaultAPIURL,
-		},
+		BotClient: newRateLimiterMiddleware(),
 	})
 
 	if err != nil {
-		logger.Log.Fatal().Stack().Err(errors.Wrap(err, "wrapped error")).Msg("failed to create new bot")
+		logger.Log.Fatal("failed to create new bot", zap.Error(err))
 	}
 
-	b.UseMiddleware(rateLimiterMiddleware)
-
 	// Create updater and dispatcher.
-	updater := ext.NewUpdater(&ext.UpdaterOpts{
-		Dispatcher: ext.NewDispatcher(&ext.DispatcherOpts{
-			// If an error is returned by a handler, log it and continue going.
-			Error: func(b *gotgbot.Bot, ctx *ext.Context, err error) ext.DispatcherAction {
-				logger.Log.Error().Stack().Err(errors.Wrap(err, "wrapped error")).Msg("an error occurred while handling update")
-				return ext.DispatcherActionEndGroups
-			},
-			Panic: func(b *gotgbot.Bot, ctx *ext.Context, r interface{}) {
-				logger.Log.Error().Any("panic_reason", r).Msg("a panic occurred while handling update")
-			},
-			MaxRoutines: ext.DefaultMaxRoutines,
-		}),
+	dispatcher := ext.NewDispatcher(&ext.DispatcherOpts{
+		// If an error is returned by a handler, log it and continue going.
+		Error: func(b *gotgbot.Bot, ctx *ext.Context, err error) ext.DispatcherAction {
+			logger.Log.Error("an error occurred while handling update", zap.Error(err))
+			return ext.DispatcherActionEndGroups
+		},
+		MaxRoutines: ext.DefaultMaxRoutines,
+		Logger:      logger.Slog,
 	})
-	dispatcher := updater.Dispatcher
+	updater := ext.NewUpdater(dispatcher, &ext.UpdaterOpts{Logger: logger.Slog})
 
 	dbPool, err := pgxpool.New(context.Background(), config.GetDbDSN())
 	if err != nil {
-		logger.Log.Fatal().Stack().Err(errors.Wrap(err, "wrapped error")).Msg("failed to connect to database")
+		logger.Log.Fatal("failed to connect to database", zap.Error(err))
 	}
 
 	usersCache := users_cache.NewTgUsersCache(dbPool, 4*time.Hour, 4*24*time.Hour)
@@ -92,7 +84,7 @@ func NewBot(config Config) *MyBot {
 	); err == nil {
 		confItems, err := pgx.CollectRows(rows, pgx.RowToStructByNameLax[tables.Config])
 		if err != nil {
-			logger.Log.Fatal().Stack().Err(errors.Wrap(err, "wrapped error")).Msg("failed to collect config items from returned rows")
+			logger.Log.Fatal("failed to collect config items from returned rows", zap.Error(err))
 		}
 
 		if confItems != nil {
@@ -102,22 +94,28 @@ func NewBot(config Config) *MyBot {
 					if i, err := strconv.ParseInt(item.Value, 10, 64); err == nil {
 						settings.SetMyChannelID(i)
 					} else {
-						logger.Log.Fatal().Stack().Err(errors.Wrap(err, "wrapped error")).Str(
-							"value", item.Value).Msg("failed to convert value to integer")
+						logger.Log.Fatal(
+							"failed to convert value to integer",
+							zap.Error(err),
+							zap.String("value", item.Value),
+						)
 					}
 				case tables.MyGroupID:
 					if i, err := strconv.ParseInt(item.Value, 10, 64); err == nil {
 						settings.SetMyGroupID(i)
 					} else {
-						logger.Log.Fatal().Stack().Err(errors.Wrap(err, "wrapped error")).Str(
-							"value", item.Value).Msg("failed to convert value to integer")
+						logger.Log.Fatal(
+							"failed to convert value to integer",
+							zap.Error(err),
+							zap.String("value", item.Value),
+						)
 					}
 				}
 			}
 		}
 	} else {
 		if !errors.Is(err, pgx.ErrNoRows) {
-			logger.Log.Fatal().Stack().Err(errors.Wrap(err, "wrapped error")).Msg("failed to get config items from database")
+			logger.Log.Fatal("failed to get config items from database", zap.Error(err))
 		}
 	}
 
@@ -132,8 +130,10 @@ func NewBot(config Config) *MyBot {
 	); err == nil {
 		specialUsers, err := pgx.CollectRows(rows, pgx.RowToAddrOfStructByNameLax[tables.TelegramUser])
 		if err != nil {
-			logger.Log.Fatal().Stack().Err(errors.Wrap(err, "wrapped error")).Msg(
-				"failed to collect telegram users from returned rows")
+			logger.Log.Fatal(
+				"failed to collect telegram users from returned rows",
+				zap.Error(err),
+			)
 		}
 
 		ticker := time.NewTicker(time.Millisecond * 50)
@@ -141,14 +141,18 @@ func NewBot(config Config) *MyBot {
 		for _, val := range commands.GetCommands(specialUsers) {
 			<-ticker.C
 			if success, err := b.SetMyCommands(val.Commands, val.Opts); err != nil || !success {
-				logger.Log.Fatal().Stack().Err(errors.Wrap(err, "wrapped error")).Msg(
-					"failed to set commands")
+				logger.Log.Fatal(
+					"failed to set commands",
+					zap.Error(err),
+				)
 			}
 		}
 	} else {
 		if !errors.Is(err, pgx.ErrNoRows) {
-			logger.Log.Fatal().Stack().Err(errors.Wrap(err, "wrapped error")).Msg(
-				"failed to get users from database")
+			logger.Log.Fatal(
+				"failed to get users from database",
+				zap.Error(err),
+			)
 		}
 	}
 
@@ -219,46 +223,48 @@ func (b *MyBot) AnswerWebAppQuery(
 }
 
 // Run starts webhook server and blocks with updater.Idle()
-func (b *MyBot) Run(serveGinServer func()) {
-	// Start the server before we set the webhook itself, so that when telegram starts
-	// sending updates, the server is already ready.
+func (b *MyBot) Run() {
+	logger.Log.Info("Telegram bot starting")
+
 	webhookOpts := ext.WebhookOpts{
 		ListenAddr:  fmt.Sprintf("localhost:%d", b.webhookPort),
 		SecretToken: b.webhookSecret,
 	}
-
+	// Start the server before we set the webhook itself, so that when telegram starts
+	// sending updates, the server is already ready.
 	err := b.updater.StartWebhook(b.bot, b.webhookPath, webhookOpts)
 	if err != nil {
-		logger.Log.Fatal().Stack().Err(errors.Wrap(err, "wrapped error")).Msg("failed to start webhook")
+		logger.Log.Fatal("failed to start webhook", zap.Error(err))
 	}
 
+	// set the webhook
 	err = b.updater.SetAllBotWebhooks(b.webhookDomain, &gotgbot.SetWebhookOpts{
 		MaxConnections:     100,
 		DropPendingUpdates: true,
 		SecretToken:        webhookOpts.SecretToken,
 	})
 	if err != nil {
-		logger.Log.Fatal().Stack().Err(errors.Wrap(err, "wrapped error")).Msg("failed to set webhook")
+		logger.Log.Fatal("failed to set webhook", zap.Error(err))
 	}
 
-	logger.Log.Info().Str("username", b.bot.User.Username).Msg("Webhooks have been started...")
-
-	if serveGinServer != nil {
-		serveGinServer()
-	} else {
-		// Idle, to keep updates coming in, and avoid bot stopping.
-		b.updater.Idle()
-	}
+	logger.Log.Info("Bot has started", zap.String("username", b.bot.User.Username))
 }
 
 // CleanUp cleans up bot resources
-func (b *MyBot) CleanUp() {
+func (b *MyBot) CleanUp(shutDownPeriod time.Duration) {
 	b.DB.Close()
 	if _, err := b.bot.DeleteWebhook(&gotgbot.DeleteWebhookOpts{
 		DropPendingUpdates: true,
+		RequestOpts:        &gotgbot.RequestOpts{Timeout: shutDownPeriod},
 	}); err != nil {
-		logger.Log.Warn().Msg("failed to delete the webhook")
+		logger.Log.Warn("failed to delete the webhook", zap.Error(err))
 	}
+	b.dispatcher.Stop()
+	err := b.updater.Stop()
+	if err != nil {
+		logger.Log.Warn("failed to stop the updater", zap.Error(err))
+	}
+	logger.Log.Info("Bot has stopped, webhook deleted")
 }
 
 // GetUsername returns the bot username
@@ -267,6 +273,6 @@ func (b *MyBot) GetUsername() string {
 }
 
 // GetChat returns the chat with the specified id
-func (b *MyBot) GetChat(id int64) (*gotgbot.Chat, error) {
+func (b *MyBot) GetChat(id int64) (*gotgbot.ChatFullInfo, error) {
 	return b.bot.GetChat(id, nil)
 }

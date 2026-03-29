@@ -1,19 +1,39 @@
 package logger
 
 import (
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/pkgerrors"
+	"log/slog"
 	"os"
+
+	slogzap "github.com/samber/slog-zap/v2"
+	"go.uber.org/zap"
 )
 
 var (
-	Log zerolog.Logger
+	Log  *zap.Logger
+	Slog *slog.Logger
 )
 
 func init() {
-	zerolog.ErrorStackMarshaler = pkgerrors.MarshalStack
+	var err error
 
-	Log = zerolog.New(os.Stdout).With().Timestamp().Logger().
-		Output(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: "2006-01-02 15:04:05", NoColor: false})
-	Log.Debug().Msg("logger initialized")
+	if os.Getenv("DEBUG") != "" {
+		Log, err = zap.NewDevelopment()
+	} else {
+		Log, err = zap.NewProduction()
+	}
+
+	if err != nil {
+		panic(err)
+	}
+
+	Slog = slog.New(
+		slogzap.Option{
+			Level:  slog.LevelDebug,
+			Logger: Log,
+		}.NewZapHandler(),
+	)
+}
+
+func Flush() {
+	_ = Log.Sync()
 }

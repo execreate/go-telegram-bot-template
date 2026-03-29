@@ -3,16 +3,19 @@ package users_cache
 import (
 	"context"
 	"database/sql"
-	"github.com/PaulSonOfLars/gotgbot/v2"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/pkg/errors"
-	"my-telegram-bot/database/tables"
-	"my-telegram-bot/internals/logger"
-	"my-telegram-bot/internals/users_cache/user_container"
 	"strings"
 	"sync"
 	"time"
+
+	"errors"
+
+	"github.com/PaulSonOfLars/gotgbot/v2"
+	"github.com/execreate/go-telegram-bot-template/database/tables"
+	"github.com/execreate/go-telegram-bot-template/internals/logger"
+	"github.com/execreate/go-telegram-bot-template/internals/users_cache/user_container"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"go.uber.org/zap"
 )
 
 type TgUsersCache struct {
@@ -54,10 +57,13 @@ func (tgUsrPool *TgUsersCache) GetByUsername(username string) (*tables.TelegramU
 	telegramUser, err := pgx.CollectOneRow(rows, pgx.RowToStructByName[tables.TelegramUser])
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			logger.Log.Warn().Str("username", username).Msg("user with given username not found")
+			logger.Log.Warn("user with given username not found", zap.String("username", username))
 		} else {
-			logger.Log.Error().Stack().Err(errors.Wrap(err, "wrapped error")).Str(
-				"username", username).Msg("failed to query for a user")
+			logger.Log.Error(
+				"failed to query for a user",
+				zap.String("username", username),
+				zap.Error(err),
+			)
 		}
 		return nil, err
 	}
@@ -93,10 +99,13 @@ func (tgUsrPool *TgUsersCache) GetByID(userID int64) (*tables.TelegramUser, erro
 	telegramUser, err := pgx.CollectOneRow(rows, pgx.RowToStructByName[tables.TelegramUser])
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			logger.Log.Warn().Int64("user_id", userID).Msg("user not found")
+			logger.Log.Warn("user not found", zap.Int64("user_id", userID))
 		} else {
-			logger.Log.Error().Stack().Err(errors.Wrap(err, "wrapped error")).Int64(
-				"user_id", userID).Msg("failed to query for a user")
+			logger.Log.Error(
+				"failed to query for a user",
+				zap.Int64("user_id", userID),
+				zap.Error(err),
+			)
 		}
 		return nil, err
 	}
@@ -149,7 +158,7 @@ func (tgUsrPool *TgUsersCache) Get(effectiveUser *gotgbot.User) (*tables.Telegra
 					)
 				}
 				if err != nil {
-					logger.Log.Error().Stack().Err(errors.Wrap(err, "wrapped error")).Msg("failed to update user details")
+					logger.Log.Error("failed to update user details", zap.Error(err))
 				}
 			}(tgUsrPool.dbPool, user)
 		}
@@ -190,7 +199,7 @@ func (tgUsrPool *TgUsersCache) Get(effectiveUser *gotgbot.User) (*tables.Telegra
                         language_code,
                         is_admin,
                         accepted_terms_and_conditions_on,
-                        accepted_latest_terms_and_conditions
+                        accepted_terms_and_conditions_version
                     ) values (
 						$1,
                     	$2,
@@ -202,7 +211,7 @@ func (tgUsrPool *TgUsersCache) Get(effectiveUser *gotgbot.User) (*tables.Telegra
                     	$7,
                     	false,
                     	null,
-                    	false
+                    	null
 					)`,
 				effectiveUser.Id,
 				now,
@@ -212,7 +221,7 @@ func (tgUsrPool *TgUsersCache) Get(effectiveUser *gotgbot.User) (*tables.Telegra
 				nullUsername,
 				effectiveUser.LanguageCode,
 			); err != nil {
-				logger.Log.Error().Stack().Err(errors.Wrap(err, "wrapped error")).Msg("failed to insert new user details into database")
+				logger.Log.Error("failed to insert new user details into database", zap.Error(err))
 				return nil, err
 			}
 
@@ -228,8 +237,7 @@ func (tgUsrPool *TgUsersCache) Get(effectiveUser *gotgbot.User) (*tables.Telegra
 				LanguageCode: effectiveUser.LanguageCode,
 			}
 		} else {
-			logger.Log.Error().Stack().Err(errors.Wrap(err, "wrapped error")).Int64(
-				"user_id", effectiveUser.Id).Msg("failed to query for a user")
+			logger.Log.Error("failed to query for a user", zap.Error(err))
 			return nil, err
 		}
 	}
@@ -242,7 +250,7 @@ func (tgUsrPool *TgUsersCache) Get(effectiveUser *gotgbot.User) (*tables.Telegra
 	return &telegramUser, nil
 }
 
-func (tgUsrPool *TgUsersCache) UserHasAcceptedTermsAndConditions(userID int64) error {
+func (tgUsrPool *TgUsersCache) UserHasAcceptedTermsAndConditions(userID int64, version string) error {
 	tgUsrPool.mu.RLock()
 	defer tgUsrPool.mu.RUnlock()
 
@@ -254,19 +262,24 @@ func (tgUsrPool *TgUsersCache) UserHasAcceptedTermsAndConditions(userID int64) e
 			ctx,
 			//language=SQL
 			`update telegram_users
-			set accepted_terms_and_conditions_on = $1, accepted_latest_terms_and_conditions = true
-			where id = $2`,
+			set accepted_terms_and_conditions_on = $1, accepted_terms_and_conditions_version = $2
+			where id = $3`,
 			acceptedOn,
+			version,
 			userID,
 		); err != nil {
-			logger.Log.Error().Stack().Err(errors.Wrap(err, "wrapped error")).Msg("failed to update user details in database")
+			logger.Log.Error(
+				"failed to update user details in database",
+				zap.Int64("user_id", userID),
+				zap.Error(err),
+			)
 			return err
 		}
-		userContainer.TermsAndConditionsAccepted(acceptedOn)
+		userContainer.TermsAndConditionsAccepted(acceptedOn, version)
 		return nil
-	} else {
-		return errors.New("user not found in cache, should never come here")
 	}
+
+	return errors.New("user not found in cache, should never come here")
 }
 
 func (tgUsrPool *TgUsersCache) addNewUser(userID int64, user *user_container.TgUserContainer) {

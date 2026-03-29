@@ -2,9 +2,10 @@ package limiters
 
 import (
 	"context"
-	"golang.org/x/time/rate"
 	"sync"
 	"time"
+
+	"golang.org/x/time/rate"
 )
 
 type TokenBucketRateLimiterPool struct {

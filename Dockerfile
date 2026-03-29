@@ -3,7 +3,7 @@ FROM alpine as cacerts
 RUN apk update && apk upgrade && apk add --no-cache ca-certificates
 RUN update-ca-certificates
 
-FROM golang:1.20 as build
+FROM golang:1.26 as build
 
 WORKDIR /app
 COPY go.mod /app/go.mod

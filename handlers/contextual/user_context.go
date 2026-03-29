@@ -1,9 +1,9 @@
-package context
+package contextual
 
 import (
 	"github.com/PaulSonOfLars/gotgbot/v2"
 	"github.com/PaulSonOfLars/gotgbot/v2/ext"
-	"my-telegram-bot/internals/users_cache"
+	"github.com/execreate/go-telegram-bot-template/internals/users_cache"
 )
 
 type UserContextHandler struct {

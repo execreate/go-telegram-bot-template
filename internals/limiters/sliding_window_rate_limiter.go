@@ -3,9 +3,11 @@ package limiters
 import (
 	"context"
 	"fmt"
-	"my-telegram-bot/internals/logger"
 	"sync"
 	"time"
+
+	"github.com/execreate/go-telegram-bot-template/internals/logger"
+	"go.uber.org/zap"
 )
 
 type SlidingWindowRateLimiter struct {
@@ -18,10 +20,16 @@ type SlidingWindowRateLimiter struct {
 
 func NewSlidingWindowRateLimiter(window time.Duration, maxN int) *SlidingWindowRateLimiter {
 	if maxN <= 0 {
-		logger.Log.Fatal().Int("maxN", maxN).Msg("maxN must be greater than 0")
+		logger.Log.Fatal(
+			"maxN must be greater than 0",
+			zap.Int("maxN", maxN),
+		)
 	}
 	if window <= 0 {
-		logger.Log.Fatal().Dur("window", window).Msg("window must be greater than 0")
+		logger.Log.Fatal(
+			"window must be greater than 0",
+			zap.Duration("window", window),
+		)
 	}
 
 	return &SlidingWindowRateLimiter{

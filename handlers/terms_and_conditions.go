@@ -1,27 +1,30 @@
 package handlers
 
 import (
+	"net/http"
+
 	"github.com/PaulSonOfLars/gotgbot/v2"
 	"github.com/PaulSonOfLars/gotgbot/v2/ext"
+	"github.com/execreate/go-telegram-bot-template/database/tables"
+	"github.com/execreate/go-telegram-bot-template/internals/bot"
+	"github.com/execreate/go-telegram-bot-template/internals/gin_server"
+	"github.com/execreate/go-telegram-bot-template/internals/logger"
 	"github.com/gin-gonic/gin"
-	"github.com/pkg/errors"
 	"github.com/spf13/viper"
-	"my-telegram-bot/database/tables"
-	"my-telegram-bot/internals/bot"
-	"my-telegram-bot/internals/gin_server"
-	"my-telegram-bot/internals/logger"
-	"net/http"
+	"go.uber.org/zap"
 )
 
 type TermsAndConditionsHandler struct {
 	bot      *bot.MyBot
 	htmlFile string
+	version  string
 }
 
 func NewTermsAndConditionsHandler(bot *bot.MyBot, srv *gin_server.Server) *TermsAndConditionsHandler {
 	termsHandler := &TermsAndConditionsHandler{
 		bot:      bot,
 		htmlFile: "terms_and_conditions.html",
+		version:  "v1.0.0",
 	}
 
 	srv.AddStaticFileHandler(termsHandler.htmlFile)
@@ -40,7 +43,7 @@ func (handler *TermsAndConditionsHandler) CheckUpdate(_ *gotgbot.Bot, ctx *ext.C
 		return false
 	}
 	user := ctx.Data["db_user"].(*tables.TelegramUser)
-	return ctx.EffectiveChat != nil && ctx.EffectiveChat.Type == "private" && !user.AcceptedLatestTermsAndConditions
+	return ctx.EffectiveChat != nil && ctx.EffectiveChat.Type == "private" && user.MustAcceptTermsAndConditions(handler.version)
 }
 
 func (handler *TermsAndConditionsHandler) HandleUpdate(b *gotgbot.Bot, ctx *ext.Context) error {
@@ -63,7 +66,7 @@ func (handler *TermsAndConditionsHandler) HandleUpdate(b *gotgbot.Bot, ctx *ext.
 	}
 
 	replyMsgText := texts.GetString("terms_and_conditions.request")
-	if user.AcceptedTermsAndConditionsOn.Valid && !user.AcceptedLatestTermsAndConditions {
+	if user.AcceptedTermsAndConditionsOn.Valid && user.MustAcceptTermsAndConditions(handler.version) {
 		replyMsgText = texts.GetString("terms_and_conditions.changed")
 	}
 
@@ -85,16 +88,28 @@ func (handler *TermsAndConditionsHandler) handleAcceptTermsAndConditions(
 	webAppUser *gin_server.TgWebAppUser,
 	texts *viper.Viper,
 ) {
-	if err := handler.bot.UsersCache.UserHasAcceptedTermsAndConditions(webAppUser.ID); err != nil {
-		logger.Log.Error().Stack().Err(errors.Wrap(err, "wrapped error")).Msg("failed to update user's terms and conditions acceptance status")
+	if err := handler.bot.UsersCache.UserHasAcceptedTermsAndConditions(webAppUser.ID, handler.version); err != nil {
+		logger.Log.Error(
+			"failed to update user's terms and conditions acceptance status",
+			zap.Int64("user_id", webAppUser.ID),
+			zap.Error(err),
+		)
 		_, err = handler.bot.SendMessage(webAppUser.ID, texts.GetString("terms_and_conditions.failed_to_accept"), nil)
 		if err != nil {
-			logger.Log.Error().Stack().Err(errors.Wrap(err, "wrapped error")).Msg("failed to send message to user")
+			logger.Log.Error(
+				"failed to send message to user",
+				zap.Int64("user_id", webAppUser.ID),
+				zap.Error(err),
+			)
 		}
 	} else {
 		_, err := handler.bot.SendMessage(webAppUser.ID, texts.GetString("terms_and_conditions.accepted"), nil)
 		if err != nil {
-			logger.Log.Error().Stack().Err(errors.Wrap(err, "wrapped error")).Msg("failed to send message to user")
+			logger.Log.Error(
+				"failed to send message to user",
+				zap.Int64("user_id", webAppUser.ID),
+				zap.Error(err),
+			)
 		}
 	}
 

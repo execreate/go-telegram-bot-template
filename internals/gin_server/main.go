@@ -1,10 +1,14 @@
 package gin_server
 
 import (
+	"context"
 	"fmt"
+	"net"
+	"net/http"
+
+	"github.com/execreate/go-telegram-bot-template/internals/logger"
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/viper"
-	"my-telegram-bot/internals/logger"
 )
 
 type Config interface {
@@ -35,11 +39,13 @@ func NewGinServer(config Config) *Server {
 	}
 }
 
-func (srv *Server) RunServer() {
-	logger.Log.Info().Msg("starting gin server...")
-	err := srv.router.Run(fmt.Sprintf(":%d", srv.config.GetWebAppPort()))
-	if err != nil {
-		panic(err)
+func (srv *Server) GetServer(ctx context.Context) *http.Server {
+	return &http.Server{
+		Addr: fmt.Sprintf(":%d", srv.config.GetWebAppPort()),
+		BaseContext: func(_ net.Listener) context.Context {
+			return ctx
+		},
+		Handler: srv.router.Handler(),
 	}
 }
 
@@ -58,7 +64,7 @@ func (srv *Server) AddWebAppRequestHandler(
 			srv.validateWebAppQuery(c, handlerFn)
 		})
 	default:
-		logger.Log.Panic().Msg("unknown handler method")
+		logger.Log.Panic("unknown handler method")
 	}
 }
 

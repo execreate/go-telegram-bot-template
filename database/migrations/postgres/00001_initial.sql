@@ -19,17 +19,17 @@ CREATE UNIQUE INDEX "idx_configs_key" ON "configs" ("key") WHERE "deleted_at" is
 
 CREATE TABLE "telegram_users"
 (
-    "id"                                   bigint,
-    "created_at"                           timestamptz,
-    "updated_at"                           timestamptz,
-    "deleted_at"                           timestamptz DEFAULT NULL,
-    "first_name"                           varchar(250),
-    "last_name"                            varchar(250),
-    "username"                             varchar(250),
-    "language_code"                        varchar(3),
-    "is_admin"                             boolean     DEFAULT FALSE,
-    "accepted_terms_and_conditions_on"     timestamptz DEFAULT NULL,
-    "accepted_latest_terms_and_conditions" boolean     DEFAULT FALSE,
+    "id"                                    bigint,
+    "created_at"                            timestamptz,
+    "updated_at"                            timestamptz,
+    "deleted_at"                            timestamptz DEFAULT NULL,
+    "first_name"                            varchar(250),
+    "last_name"                             varchar(250),
+    "username"                              varchar(250),
+    "language_code"                         varchar(3),
+    "is_admin"                              boolean     DEFAULT FALSE,
+    "accepted_terms_and_conditions_on"      timestamptz DEFAULT NULL,
+    "accepted_terms_and_conditions_version" varchar(10) DEFAULT NULL,
     PRIMARY KEY ("id")
 );
 

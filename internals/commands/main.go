@@ -2,7 +2,7 @@ package commands
 
 import (
 	"github.com/PaulSonOfLars/gotgbot/v2"
-	"my-telegram-bot/database/tables"
+	"github.com/execreate/go-telegram-bot-template/database/tables"
 )
 
 type Settings struct {

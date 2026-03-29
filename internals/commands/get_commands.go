@@ -2,18 +2,20 @@ package commands
 
 import (
 	"github.com/PaulSonOfLars/gotgbot/v2"
-	"github.com/pkg/errors"
+	"github.com/execreate/go-telegram-bot-template/database/tables"
+	"github.com/execreate/go-telegram-bot-template/internals/logger"
+	"github.com/execreate/go-telegram-bot-template/locale"
 	"github.com/spf13/viper"
-	"my-telegram-bot/database/tables"
-	"my-telegram-bot/internals/logger"
-	"my-telegram-bot/locale"
+	"go.uber.org/zap"
 )
 
 func getCommandsMap(txtKeys []string, lang string) map[string]string {
 	var texts *viper.Viper
 	if val, err := locale.GetCmdTranslations(lang); err != nil {
-		logger.Log.Fatal().Stack().Err(errors.Wrap(err, "wrapped error")).Msg(
-			"failed to get command texts")
+		logger.Log.Fatal(
+			"failed to get command texts",
+			zap.Error(err),
+		)
 	} else {
 		texts = val
 	}

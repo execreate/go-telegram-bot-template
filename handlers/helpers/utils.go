@@ -2,15 +2,17 @@ package helpers
 
 import (
 	"fmt"
-	"github.com/PaulSonOfLars/gotgbot/v2/ext"
-	"my-telegram-bot/database/tables"
 	"strings"
+
+	"github.com/execreate/go-telegram-bot-template/database/tables"
+
+	"github.com/PaulSonOfLars/gotgbot/v2/ext"
 )
 
 func ContainsMessageViaBot(msg, botUsername string, ctx *ext.Context) bool {
 	return ctx.EffectiveMessage != nil &&
 		ctx.EffectiveMessage.Text == msg &&
-		ctx.EffectiveMessage.ForwardDate == 0 &&
+		ctx.EffectiveMessage.ForwardOrigin.GetDate() == 0 &&
 		ctx.EffectiveMessage.ViaBot != nil &&
 		ctx.EffectiveMessage.ViaBot.Username == botUsername
 }
@@ -36,9 +38,9 @@ func GetUserMention(user *tables.TelegramUser) string {
 
 	if !user.Username.Valid {
 		return fmt.Sprintf("<a href=\"tg://user?id=%d\">%s</a>", user.ID, user.FullName())
-	} else {
-		return fmt.Sprintf("@%s", user.Username.String)
 	}
+
+	return fmt.Sprintf("@%s", user.Username.String)
 }
 
 func EscapeMarkdownChars(text string) string {
