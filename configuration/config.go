@@ -117,5 +117,5 @@ func (config *Configuration) GetRedisUseSSL() bool {
 
 // GetDebug returns true if the app is running in debug mode
 func (config *Configuration) GetDebug() bool {
-	return config.GetString("debug") != "" && os.Getenv("DEBUG") != ""
+	return config.GetString("debug") != "" || os.Getenv("DEBUG") != ""
 }
