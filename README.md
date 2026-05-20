@@ -1,6 +1,8 @@
 # Go Telegram Bot Template
 
-A production-ready template for building Telegram bots in Go. Built on top of [gotgbot](https://github.com/PaulSonOfLars/gotgbot), it includes everything you need to ship a reliable, scalable bot out of the box.
+A production-ready template for building Telegram bots in Go. Built on top
+of [gotgbot](https://github.com/PaulSonOfLars/gotgbot), it includes everything you need to ship a reliable, scalable bot
+out of the box.
 
 ## Features
 
@@ -40,12 +42,12 @@ main.go                  Entry point: wires everything together, manages lifecyc
 
 **Handler execution order** (by group priority):
 
-| Group | Handler | Purpose |
-|-------|---------|---------|
-| -2 | `MiscContextHandler` | Injects WebApp domain and locale |
-| -1 | `UserContextHandler` | Loads user from cache / DB |
-| 0 | `TermsAndConditionsHandler` | Enforces T&C acceptance before proceeding |
-| 2+ | Command handlers | `start`, `my_id`, your custom handlers |
+| Group | Handler                     | Purpose                                   |
+|-------|-----------------------------|-------------------------------------------|
+| -2    | `MiscContextHandler`        | Injects WebApp domain and locale          |
+| -1    | `UserContextHandler`        | Loads user from cache / DB                |
+| 0     | `TermsAndConditionsHandler` | Enforces T&C acceptance before proceeding |
+| 2+    | Command handlers            | `start`, `my_id`, your custom handlers    |
 
 ## Prerequisites
 
@@ -104,22 +106,23 @@ Send `/start` to your bot. If it replies, you're good to go.
 
 ## Configuration
 
-Configuration is loaded from `config.yaml` and can be overridden by environment variables with the `MY_BOT_` prefix (uppercased automatically). Environment variables take precedence over the config file.
+Configuration is loaded from `config.yaml` and can be overridden by environment variables with the `MY_BOT_` prefix (
+uppercased automatically). Environment variables take precedence over the config file.
 
-| Config key | Env variable | Description |
-|------------|-------------|-------------|
-| `token` | `MY_BOT_TOKEN` | Telegram Bot API token |
-| `webhook_domain` | `MY_BOT_WEBHOOK_DOMAIN` | Public HTTPS domain for the webhook |
-| `webhook_port` | `MY_BOT_WEBHOOK_PORT` | Port to listen on (default: `8080`) |
-| `webhook_secret` | `MY_BOT_WEBHOOK_SECRET` | Secret for validating webhook requests |
-| `webapp_domain` | `MY_BOT_WEBAPP_DOMAIN` | Public HTTPS domain for the WebApp |
-| `webapp_port` | `MY_BOT_WEBAPP_PORT` | Port for the WebApp server (default: `8081`) |
-| `static_content_path` | `MY_BOT_STATIC_CONTENT_PATH` | Path to static assets directory |
-| `db_dsn` | `MY_BOT_DB_DSN` | PostgreSQL connection string |
-| `redis_addr` | `MY_BOT_REDIS_ADDR` | Redis address (e.g. `localhost:6375`) |
-| `redis_user` | `MY_BOT_REDIS_USER` | Redis username |
-| `redis_pass` | `MY_BOT_REDIS_PASS` | Redis password |
-| `debug` | `MY_BOT_DEBUG` | Set to `true` for verbose JSON logging |
+| Config key            | Env variable                 | Description                                  |
+|-----------------------|------------------------------|----------------------------------------------|
+| `token`               | `MY_BOT_TOKEN`               | Telegram Bot API token                       |
+| `webhook_domain`      | `MY_BOT_WEBHOOK_DOMAIN`      | Public HTTPS domain for the webhook          |
+| `webhook_port`        | `MY_BOT_WEBHOOK_PORT`        | Port to listen on (default: `8080`)          |
+| `webhook_secret`      | `MY_BOT_WEBHOOK_SECRET`      | Secret for validating webhook requests       |
+| `webapp_domain`       | `MY_BOT_WEBAPP_DOMAIN`       | Public HTTPS domain for the WebApp           |
+| `webapp_port`         | `MY_BOT_WEBAPP_PORT`         | Port for the WebApp server (default: `8081`) |
+| `static_content_path` | `MY_BOT_STATIC_CONTENT_PATH` | Path to static assets directory              |
+| `db_dsn`              | `MY_BOT_DB_DSN`              | PostgreSQL connection string                 |
+| `redis_addr`          | `MY_BOT_REDIS_ADDR`          | Redis address (e.g. `localhost:6375`)        |
+| `redis_user`          | `MY_BOT_REDIS_USER`          | Redis username                               |
+| `redis_pass`          | `MY_BOT_REDIS_PASS`          | Redis password                               |
+| `debug`               | `MY_BOT_DEBUG`               | Set to `true` for verbose JSON logging       |
 
 All fields are required at startup — the bot will refuse to start if any are missing.
 
@@ -151,14 +154,16 @@ goose -dir ./database/migrations/postgres postgres "<DSN>" down
 docker build -t my-telegram-bot .
 ```
 
-The multi-stage build produces a minimal image based on `scratch` (~5 MB) containing only the compiled binary, CA certificates, locale files, and static assets.
+The multi-stage build produces a minimal image based on `scratch` (~5 MB) containing only the compiled binary, CA
+certificates, locale files, and static assets.
 
 ## Adding Your Own Handlers
 
 1. Create a new handler struct implementing `CheckUpdate()` and `HandleUpdate()`.
 2. Register it in `main.go` with the appropriate priority group.
 
-Command handlers go in group 2 or higher. Use groups -2 and -1 for context-enrichment middleware. The `TermsAndConditionsHandler` at group 0 acts as a gate — any handler in group 2+ can assume the user has accepted T&C.
+Command handlers go in group 2 or higher. Use groups -2 and -1 for context-enrichment middleware. The
+`TermsAndConditionsHandler` at group 0 acts as a gate — any handler in group 2+ can assume the user has accepted T&C.
 
 ## Adding Locales
 
