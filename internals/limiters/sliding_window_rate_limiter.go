@@ -10,31 +10,34 @@ import (
 	"go.uber.org/zap"
 )
 
+type SlidingWindowRateLimiterConfig struct {
+	Window time.Duration
+	MaxN   int
+}
+
 type SlidingWindowRateLimiter struct {
-	maxN     int
-	window   time.Duration
+	conf     *SlidingWindowRateLimiterConfig
 	events   []time.Time
 	lastUsed time.Time
 	mu       sync.Mutex
 }
 
-func NewSlidingWindowRateLimiter(window time.Duration, maxN int) *SlidingWindowRateLimiter {
-	if maxN <= 0 {
+func NewSlidingWindowRateLimiter(conf *SlidingWindowRateLimiterConfig) *SlidingWindowRateLimiter {
+	if conf.MaxN <= 0 {
 		logger.Log.Fatal(
 			"maxN must be greater than 0",
-			zap.Int("maxN", maxN),
+			zap.Int("maxN", conf.MaxN),
 		)
 	}
-	if window <= 0 {
+	if conf.Window <= 0 {
 		logger.Log.Fatal(
 			"window must be greater than 0",
-			zap.Duration("window", window),
+			zap.Duration("window", conf.Window),
 		)
 	}
 
 	return &SlidingWindowRateLimiter{
-		maxN:     maxN,
-		window:   window,
+		conf:     conf,
 		lastUsed: time.Now(),
 		events:   make([]time.Time, 0),
 	}
@@ -51,7 +54,7 @@ func (rl *SlidingWindowRateLimiter) Wait(ctx context.Context) error {
 	now := time.Now()
 	rl.lastUsed = now
 
-	windowStart := now.Add(-1 * rl.window)
+	windowStart := now.Add(-1 * rl.conf.Window)
 
 	if len(rl.events) > 0 {
 		if rl.events[len(rl.events)-1].Before(windowStart) {
@@ -68,8 +71,8 @@ func (rl *SlidingWindowRateLimiter) Wait(ctx context.Context) error {
 		}
 	}
 
-	if len(rl.events)+1 > rl.maxN {
-		waitDuration := rl.events[0].Add(rl.window).Sub(now)
+	if len(rl.events)+1 > rl.conf.MaxN {
+		waitDuration := rl.events[0].Add(rl.conf.Window).Sub(now)
 		if waitDuration > 0 {
 			timer := time.NewTimer(waitDuration)
 			defer timer.Stop()

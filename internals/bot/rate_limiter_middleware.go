@@ -19,8 +19,8 @@ type rateLimitingBotClient struct {
 	// Inline existing client to call, allowing us to chain middlewares.
 	// Inlining also avoids us having to redefine helper methods part of the interface.
 	gotgbot.BotClient
-	privateChatLimiters *limiters.TokenBucketRateLimiterPool
-	groupChatLimiters   *limiters.SlidingWindowRateLimiterPool
+	privateChatLimiters *limiters.RateLimiterPool[*limiters.TokenBucketRateLimiter, *limiters.TokenBucketRateLimiterConfig]
+	groupChatLimiters   *limiters.RateLimiterPool[*limiters.SlidingWindowRateLimiter, *limiters.SlidingWindowRateLimiterConfig]
 }
 
 // RequestWithContext defines a wrapper around the existing RequestWithContext method.
@@ -28,9 +28,9 @@ type rateLimitingBotClient struct {
 // RequestWithContext allows sending a POST request to the telegram bot API with an existing context.
 //   - ctx: the timeout contexts to be used.
 //   - method: the telegram API method to call.
-//   - params: map of parameters to be sending to the telegram API. eg: chat_id, user_id, etc.
-//   - data: map of any files to be sending to the telegram API.
-//   - opts: request opts to use. Note: Timeout opts are ignored when used in RequestWithContext.
+//   - params: map of parameters to be sent to the telegram API. eg: chat_id, user_id, etc.
+//   - data: map of any files to be sent to the telegram API.
+//   - opts: request options to use. Note: Timeout opts are ignored when used in RequestWithContext.
 //     Timeout handling is the responsibility of the caller/context owner.
 func (b *rateLimitingBotClient) RequestWithContext(
 	ctx context.Context,
@@ -75,15 +75,21 @@ func newRateLimiterMiddleware() gotgbot.BotClient {
 				APIURL:  gotgbot.DefaultAPIURL,
 			},
 		},
-		privateChatLimiters: limiters.NewTokenBucketRateLimiterPool(
-			rate.Every(time.Second),
-			1,
+		privateChatLimiters: limiters.NewRateLimiterPool[*limiters.TokenBucketRateLimiter, *limiters.TokenBucketRateLimiterConfig](
+			limiters.NewTokenBucketRateLimiter,
+			&limiters.TokenBucketRateLimiterConfig{
+				Limit: rate.Every(time.Second),
+				Burst: 1,
+			},
 			time.Hour*4,
 			time.Hour*24,
 		),
-		groupChatLimiters: limiters.NewSlidingWindowRateLimiterPool(
-			time.Minute,
-			20,
+		groupChatLimiters: limiters.NewRateLimiterPool[*limiters.SlidingWindowRateLimiter, *limiters.SlidingWindowRateLimiterConfig](
+			limiters.NewSlidingWindowRateLimiter,
+			&limiters.SlidingWindowRateLimiterConfig{
+				Window: time.Minute,
+				MaxN:   20,
+			},
 			time.Hour*4,
 			time.Hour*24,
 		),

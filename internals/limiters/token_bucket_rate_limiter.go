@@ -7,14 +7,19 @@ import (
 	"golang.org/x/time/rate"
 )
 
+type TokenBucketRateLimiterConfig struct {
+	Limit rate.Limit
+	Burst int
+}
+
 type TokenBucketRateLimiter struct {
 	limiter  *rate.Limiter
 	lastUsed time.Time
 }
 
-func NewTokenBucketRateLimiter(limit rate.Limit, burst int) *TokenBucketRateLimiter {
+func NewTokenBucketRateLimiter(conf *TokenBucketRateLimiterConfig) *TokenBucketRateLimiter {
 	return &TokenBucketRateLimiter{
-		limiter:  rate.NewLimiter(limit, burst),
+		limiter:  rate.NewLimiter(conf.Limit, conf.Burst),
 		lastUsed: time.Now(),
 	}
 }
@@ -26,12 +31,4 @@ func (c *TokenBucketRateLimiter) IsStale(d time.Duration) bool {
 func (c *TokenBucketRateLimiter) Wait(ctx context.Context) error {
 	c.lastUsed = time.Now()
 	return c.limiter.Wait(ctx)
-}
-
-func (c *TokenBucketRateLimiter) GetWaitTime() time.Duration {
-	c.lastUsed = time.Now()
-	reservation := c.limiter.Reserve()
-	defer reservation.Cancel()
-
-	return reservation.Delay()
 }
