@@ -12,22 +12,22 @@ type RateLimiter interface {
 }
 
 type RateLimiterPool[T RateLimiter, Conf any] struct {
-	limiters map[int64]T
-	config   Conf
-	create   func(Conf) T
-	mu       sync.RWMutex
+	limiterConfig Conf
+	createLimiter func(Conf) T
+	limiters      map[int64]T
+	mu            sync.RWMutex
 }
 
 func NewRateLimiterPool[T RateLimiter, Conf any](
-	create func(Conf) T,
-	config Conf,
+	createLimiter func(Conf) T,
+	limiterConfig Conf,
 	cleanUpInterval time.Duration,
 	staleThreshold time.Duration,
 ) *RateLimiterPool[T, Conf] {
 	pool := &RateLimiterPool[T, Conf]{
-		limiters: make(map[int64]T),
-		create:   create,
-		config:   config,
+		limiters:      make(map[int64]T),
+		createLimiter: createLimiter,
+		limiterConfig: limiterConfig,
 	}
 	go pool.watchStaleLimiters(cleanUpInterval, staleThreshold)
 	return pool
@@ -41,7 +41,7 @@ func (pool *RateLimiterPool[T, Conf]) WaitLimiter(ctx context.Context, limiterID
 		limiter = l
 	} else {
 		pool.mu.RUnlock()
-		limiter = pool.create(pool.config)
+		limiter = pool.createLimiter(pool.limiterConfig)
 		go pool.addLimiter(limiterID, limiter)
 	}
 	return limiter.Wait(ctx)
