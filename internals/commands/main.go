@@ -12,19 +12,27 @@ type Settings struct {
 
 const DefaultKey = "general"
 
-func GetCommands(specialUsers []*tables.TelegramUser) []Settings {
+func GetCommands(specialUsers []*tables.TelegramUser) ([]Settings, error) {
 	result := make([]Settings, 0, len(specialUsers)+1)
 
+	generalCommands, err := getCommandsMap([]string{DefaultKey}, "en")
+	if err != nil {
+		return nil, err
+	}
 	result = append(result, Settings{
-		Commands: getCommandsSlice(getCommandsMap([]string{DefaultKey}, "en")),
+		Commands: getCommandsSlice(generalCommands),
 		Opts: &gotgbot.SetMyCommandsOpts{
 			Scope: &gotgbot.BotCommandScopeAllPrivateChats{},
 		},
 	})
 
 	for _, usr := range specialUsers {
+		userCommands, err := GetUserCommands(usr)
+		if err != nil {
+			return nil, err
+		}
 		result = append(result, Settings{
-			Commands: GetUserCommands(usr),
+			Commands: userCommands,
 			Opts: &gotgbot.SetMyCommandsOpts{
 				Scope: &gotgbot.BotCommandScopeChat{
 					ChatId: usr.ID,
@@ -33,5 +41,5 @@ func GetCommands(specialUsers []*tables.TelegramUser) []Settings {
 		})
 	}
 
-	return result
+	return result, nil
 }

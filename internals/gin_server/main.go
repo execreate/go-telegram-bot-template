@@ -6,7 +6,6 @@ import (
 	"net"
 	"net/http"
 
-	"github.com/execreate/go-telegram-bot-template/internals/logger"
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/viper"
 )
@@ -53,7 +52,7 @@ func (srv *Server) AddWebAppRequestHandler(
 	method HandlerMethods,
 	path string,
 	handlerFn func(c *gin.Context, webAppUser *TgWebAppUser, texts *viper.Viper),
-) {
+) error {
 	switch method {
 	case GET:
 		srv.router.GET(path, func(c *gin.Context) {
@@ -64,8 +63,9 @@ func (srv *Server) AddWebAppRequestHandler(
 			srv.validateWebAppQuery(c, handlerFn)
 		})
 	default:
-		logger.Log.Panic("unknown handler method")
+		return fmt.Errorf("unknown handler method: %q", method)
 	}
+	return nil
 }
 
 func (srv *Server) AddStaticFileHandler(fileName string) {

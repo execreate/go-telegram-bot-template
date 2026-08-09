@@ -29,11 +29,13 @@ func NewTermsAndConditionsHandler(bot *bot.MyBot, srv *gin_server.Server) *Terms
 
 	srv.AddStaticFileHandler(termsHandler.htmlFile)
 
-	srv.AddWebAppRequestHandler(
+	if err := srv.AddWebAppRequestHandler(
 		gin_server.GET,
 		"/accept_terms",
 		termsHandler.handleAcceptTermsAndConditions,
-	)
+	); err != nil {
+		logger.Log.Fatal("failed to register accept_terms handler", zap.Error(err))
+	}
 
 	return termsHandler
 }
@@ -94,7 +96,7 @@ func (handler *TermsAndConditionsHandler) handleAcceptTermsAndConditions(
 			zap.Int64("user_id", webAppUser.ID),
 			zap.Error(err),
 		)
-		_, err = handler.bot.SendMessage(webAppUser.ID, texts.GetString("terms_and_conditions.failed_to_accept"), nil)
+		_, err = handler.bot.Bot().SendMessage(webAppUser.ID, texts.GetString("terms_and_conditions.failed_to_accept"), nil)
 		if err != nil {
 			logger.Log.Error(
 				"failed to send message to user",
@@ -103,7 +105,7 @@ func (handler *TermsAndConditionsHandler) handleAcceptTermsAndConditions(
 			)
 		}
 	} else {
-		_, err := handler.bot.SendMessage(webAppUser.ID, texts.GetString("terms_and_conditions.accepted"), nil)
+		_, err := handler.bot.Bot().SendMessage(webAppUser.ID, texts.GetString("terms_and_conditions.accepted"), nil)
 		if err != nil {
 			logger.Log.Error(
 				"failed to send message to user",

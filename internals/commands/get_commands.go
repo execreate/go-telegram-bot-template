@@ -1,23 +1,17 @@
 package commands
 
 import (
+	"fmt"
+
 	"github.com/PaulSonOfLars/gotgbot/v2"
 	"github.com/execreate/go-telegram-bot-template/database/tables"
-	"github.com/execreate/go-telegram-bot-template/internals/logger"
 	"github.com/execreate/go-telegram-bot-template/locale"
-	"github.com/spf13/viper"
-	"go.uber.org/zap"
 )
 
-func getCommandsMap(txtKeys []string, lang string) map[string]string {
-	var texts *viper.Viper
-	if val, err := locale.GetCmdTranslations(lang); err != nil {
-		logger.Log.Fatal(
-			"failed to get command texts",
-			zap.Error(err),
-		)
-	} else {
-		texts = val
+func getCommandsMap(txtKeys []string, lang string) (map[string]string, error) {
+	texts, err := locale.GetCmdTranslations(lang)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get command texts for locale %q: %w", lang, err)
 	}
 
 	result := make(map[string]string)
@@ -28,7 +22,7 @@ func getCommandsMap(txtKeys []string, lang string) map[string]string {
 		}
 	}
 
-	return result
+	return result, nil
 }
 
 func getCommandsSlice(cmdMap map[string]string) []gotgbot.BotCommand {
@@ -44,12 +38,17 @@ func getCommandsSlice(cmdMap map[string]string) []gotgbot.BotCommand {
 	return result
 }
 
-func GetUserCommands(usr *tables.TelegramUser) []gotgbot.BotCommand {
+func GetUserCommands(usr *tables.TelegramUser) ([]gotgbot.BotCommand, error) {
 	txtKeys := []string{DefaultKey}
 
 	if usr.IsAdmin {
 		txtKeys = append(txtKeys, "admin")
 	}
 
-	return getCommandsSlice(getCommandsMap(txtKeys, usr.LanguageCode))
+	cmdMap, err := getCommandsMap(txtKeys, usr.LanguageCode)
+	if err != nil {
+		return nil, err
+	}
+
+	return getCommandsSlice(cmdMap), nil
 }

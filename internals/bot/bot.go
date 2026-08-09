@@ -136,9 +136,14 @@ func NewBot(config Config) *MyBot {
 			)
 		}
 
+		commandsList, err := commands.GetCommands(specialUsers)
+		if err != nil {
+			logger.Log.Fatal("failed to build bot commands", zap.Error(err))
+		}
+
 		ticker := time.NewTicker(time.Millisecond * 50)
 		defer ticker.Stop()
-		for _, val := range commands.GetCommands(specialUsers) {
+		for _, val := range commandsList {
 			<-ticker.C
 			if success, err := b.SetMyCommands(val.Commands, val.Opts); err != nil || !success {
 				logger.Log.Fatal(
@@ -185,41 +190,11 @@ func (b *MyBot) AddHandlerToGroup(h ext.Handler, group int) {
 	b.dispatcher.AddHandlerToGroup(h, group)
 }
 
-// SendMessage sends a message with specified parameters
-func (b *MyBot) SendMessage(chatId int64, text string, opts *gotgbot.SendMessageOpts) (*gotgbot.Message, error) {
-	return b.bot.SendMessage(chatId, text, opts)
-}
-
-// EditMessageText edits a message with specified parameters
-func (b *MyBot) EditMessageText(text string, opts *gotgbot.EditMessageTextOpts) (*gotgbot.Message, bool, error) {
-	return b.bot.EditMessageText(text, opts)
-}
-
-// SendDocument sends a document with specified parameters
-func (b *MyBot) SendDocument(chatId int64, document gotgbot.InputFile, opts *gotgbot.SendDocumentOpts) (*gotgbot.Message, error) {
-	return b.bot.SendDocument(chatId, document, opts)
-}
-
-// SendPhoto sends a photo with specified parameters
-func (b *MyBot) SendPhoto(chatId int64, photo gotgbot.InputFile, opts *gotgbot.SendPhotoOpts) (*gotgbot.Message, error) {
-	return b.bot.SendPhoto(chatId, photo, opts)
-}
-
-// SendMediaGroup sends a media group with specified parameters
-func (b *MyBot) SendMediaGroup(chatId int64, media []gotgbot.InputMedia, opts *gotgbot.SendMediaGroupOpts) ([]gotgbot.Message, error) {
-	return b.bot.SendMediaGroup(chatId, media, opts)
-}
-
-// AnswerWebAppQuery answers the web app query
-func (b *MyBot) AnswerWebAppQuery(
-	webAppQueryId string,
-	result gotgbot.InlineQueryResult,
-	opts *gotgbot.AnswerWebAppQueryOpts,
-) (
-	*gotgbot.SentWebAppMessage,
-	error,
-) {
-	return b.bot.AnswerWebAppQuery(webAppQueryId, result, opts)
+// Bot exposes the underlying gotgbot client so callers can use the full Telegram
+// Bot API (SendMessage, SendPoll, EditMessageText, ...) without this package having
+// to add a passthrough wrapper for every method.
+func (b *MyBot) Bot() *gotgbot.Bot {
+	return b.bot
 }
 
 // Run starts webhook server and blocks with updater.Idle()
@@ -270,9 +245,4 @@ func (b *MyBot) CleanUp(shutDownPeriod time.Duration) {
 // GetUsername returns the bot username
 func (b *MyBot) GetUsername() string {
 	return b.bot.User.Username
-}
-
-// GetChat returns the chat with the specified id
-func (b *MyBot) GetChat(id int64) (*gotgbot.ChatFullInfo, error) {
-	return b.bot.GetChat(id, nil)
 }
