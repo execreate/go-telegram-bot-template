@@ -1,4 +1,5 @@
 token: "YOUR_BOT_TOKEN"
+terms_and_conditions_version: "v1.0.0"
 webhook_domain: "YOUR_WEBHOOK_DOMAIN"
 webhook_port: "8080"
 webhook_secret: "YOUR_BOT_WEBHOOK_SECRET"

@@ -20,11 +20,11 @@ type TermsAndConditionsHandler struct {
 	version  string
 }
 
-func NewTermsAndConditionsHandler(bot *bot.MyBot, srv *gin_server.Server) *TermsAndConditionsHandler {
+func NewTermsAndConditionsHandler(bot *bot.MyBot, srv *gin_server.Server, version string) *TermsAndConditionsHandler {
 	termsHandler := &TermsAndConditionsHandler{
 		bot:      bot,
 		htmlFile: "terms_and_conditions.html",
-		version:  "v1.0.0",
+		version:  version,
 	}
 
 	srv.AddStaticFileHandler(termsHandler.htmlFile)
@@ -90,7 +90,10 @@ func (handler *TermsAndConditionsHandler) handleAcceptTermsAndConditions(
 	webAppUser *gin_server.TgWebAppUser,
 	texts *viper.Viper,
 ) {
-	if err := handler.bot.UsersCache.UserHasAcceptedTermsAndConditions(webAppUser.ID, handler.version); err != nil {
+	if err := handler.bot.UsersCache.UserHasAcceptedTermsAndConditions(
+		webAppUser.ID,
+		handler.version,
+	); err != nil {
 		logger.Log.Error(
 			"failed to update user's terms and conditions acceptance status",
 			zap.Int64("user_id", webAppUser.ID),
@@ -118,6 +121,6 @@ func (handler *TermsAndConditionsHandler) handleAcceptTermsAndConditions(
 	c.Data(
 		http.StatusOK,
 		"text/plain; charset=utf-8",
-		[]byte("success"),
+		[]byte("OK"),
 	)
 }

@@ -215,7 +215,7 @@ func (b *MyBot) Run() {
 	// set the webhook
 	err = b.updater.SetAllBotWebhooks(b.webhookDomain, &gotgbot.SetWebhookOpts{
 		MaxConnections:     100,
-		DropPendingUpdates: true,
+		DropPendingUpdates: false,
 		SecretToken:        webhookOpts.SecretToken,
 	})
 	if err != nil {
@@ -229,7 +229,7 @@ func (b *MyBot) Run() {
 func (b *MyBot) CleanUp(shutDownPeriod time.Duration) {
 	b.DB.Close()
 	if _, err := b.bot.DeleteWebhook(&gotgbot.DeleteWebhookOpts{
-		DropPendingUpdates: true,
+		DropPendingUpdates: false,
 		RequestOpts:        &gotgbot.RequestOpts{Timeout: shutDownPeriod},
 	}); err != nil {
 		logger.Log.Warn("failed to delete the webhook", zap.Error(err))

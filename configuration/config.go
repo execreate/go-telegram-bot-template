@@ -31,6 +31,7 @@ func Configure(requiredConfigVariables []string) *Configuration {
 	}
 	config.SetDefault("webhook_port", 8080)
 	config.SetDefault("webapp_port", 8081)
+	config.SetDefault("terms_and_conditions_version", "v1.0.0")
 	checkRequiredConfigVariables(config, requiredConfigVariables)
 	return config
 }
@@ -50,6 +51,11 @@ func checkRequiredConfigVariables(config *Configuration, requiredConfigVariables
 // GetToken returns bots secret token
 func (config *Configuration) GetToken() string {
 	return config.GetString("token")
+}
+
+// GetTermsAndConditionsVersion returns bots secret token
+func (config *Configuration) GetTermsAndConditionsVersion() string {
+	return config.GetString("terms_and_conditions_version")
 }
 
 // GetWebhookDomain returns the webhook domain without the trailing slash

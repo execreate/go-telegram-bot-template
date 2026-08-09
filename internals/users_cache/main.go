@@ -3,6 +3,7 @@ package users_cache
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -270,7 +271,9 @@ func (tgUsrPool *TgUsersCache) UserHasAcceptedTermsAndConditions(userID int64, v
 	tgUsrPool.mu.RUnlock()
 
 	if !ok {
-		return errors.New("user not found in cache, should never come here")
+		msg := "user not found in cache, but must be have been added already"
+		logger.Log.Error(msg)
+		return fmt.Errorf(msg)
 	}
 
 	acceptedOn := time.Now()

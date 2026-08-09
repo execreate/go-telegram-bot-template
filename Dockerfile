@@ -1,17 +1,26 @@
-FROM alpine as cacerts
+FROM alpine:3.21 AS cacerts
 
-RUN apk update && apk upgrade && apk add --no-cache ca-certificates
-RUN update-ca-certificates
+RUN apk add --no-cache ca-certificates && update-ca-certificates
 
-FROM golang:1.26 as build
+FROM --platform=$BUILDPLATFORM golang:1.26 AS build
+
+# TARGETOS/TARGETARCH are provided automatically by BuildKit and let us
+# cross-compile from the build host's native platform to the target platform
+# (e.g. `docker buildx build --platform linux/amd64,linux/arm64`).
+ARG TARGETOS
+ARG TARGETARCH
 
 WORKDIR /app
-COPY go.mod /app/go.mod
-COPY go.sum /app/go.sum
-RUN go mod download
-RUN go mod verify
-COPY . /app
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /go/bin/app
+
+COPY go.mod go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download && go mod verify
+
+COPY . .
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
+    go build -trimpath -ldflags="-s -w" -o /go/bin/app
 
 FROM scratch
 COPY --from=cacerts /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/

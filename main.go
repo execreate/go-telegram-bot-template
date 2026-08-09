@@ -64,7 +64,9 @@ func main() {
 	myBot.AddHandlerToGroup(contextual.NewMiscContextHandler(config.GetWebAppDomain()), -2)
 
 	// terms and conditions group
-	myBot.AddHandlerToGroup(handlers.NewTermsAndConditionsHandler(myBot, srv), 0)
+	myBot.AddHandlerToGroup(
+		handlers.NewTermsAndConditionsHandler(myBot, srv, config.GetTermsAndConditionsVersion()), 0,
+	)
 
 	// standalone commands group
 	myBot.AddHandlerToGroup(tgbotHandlers.NewCommand("start", handlers.Hello), 2)
