@@ -7,15 +7,17 @@ out of the box.
 ## Features
 
 - **Webhook-based updates** — no long polling; secure via secret token validation
-- **Telegram WebApp support** — built-in Gin server with WebApp request validation
+- **Telegram WebApp support** — built-in Gin server; initData HMAC validation plus a 12-hour `auth_date` replay window
+- **Terms & conditions gate** — versioned; users are asked to re-accept when the version changes
 - **Rate limiting** — token bucket for private chats, sliding window for group chats
 - **PostgreSQL integration** — pgxpool connection, Goose migrations, soft deletes
-- **Redis integration** — ready-to-use client for caching and pub/sub
+- **Redis conversation storage** — a `conversation.Storage` implementation for gotgbot conversation handlers
 - **In-memory user cache** — lazy-loaded, auto-synced to DB, auto-cleanup
-- **Localization** — YAML-based i18n with per-locale command descriptions
+- **Localization** — YAML-based i18n; per-user locale from Telegram's `language_code`, with admin-scoped command
+  descriptions
 - **Structured logging** — Zap logger with slog bridge
 - **Graceful shutdown** — grace period for in-flight requests
-- **Docker** — multi-stage build producing a minimal scratch image; Docker Compose dev stack
+- **Docker** — multi-stage, cross-compilable build producing a minimal scratch image; Docker Compose dev stack
 - **ngrok integration** — config template for exposing webhook and WebApp locally
 
 ## Architecture Overview
@@ -30,9 +32,9 @@ main.go                  Entry point: wires everything together, manages lifecyc
 │   ├── limiters/        Rate limiter pools (private + group chats)
 │   ├── logger/          Zap + slog setup
 │   └── users_cache/     In-memory user store with DB sync
-├── handlers/
+├── handlers/            Command and gate handlers: start, my_id, terms & conditions
 │   ├── contextual/      Middleware-style handlers: enrich update context
-│   └── helpers/         Shared handler utilities
+│   └── helpers/         Shared handler utilities (Redis conversation storage)
 ├── database/
 │   ├── migrations/      Goose SQL migrations (PostgreSQL)
 │   └── tables/          DB table models
@@ -42,12 +44,12 @@ main.go                  Entry point: wires everything together, manages lifecyc
 
 **Handler execution order** (by group priority):
 
-| Group | Handler                     | Purpose                                   |
-|-------|-----------------------------|-------------------------------------------|
-| -2    | `MiscContextHandler`        | Injects WebApp domain and locale          |
-| -1    | `UserContextHandler`        | Loads user from cache / DB                |
-| 0     | `TermsAndConditionsHandler` | Enforces T&C acceptance before proceeding |
-| 2+    | Command handlers            | `start`, `my_id`, your custom handlers    |
+| Group | Handler                     | Purpose                                        |
+|-------|-----------------------------|------------------------------------------------|
+| -2    | `MiscContextHandler`        | Injects WebApp domain and localized texts      |
+| -1    | `UserContextHandler`        | Loads user from cache / DB                     |
+| 0     | `TermsAndConditionsHandler` | Gates private chats until the T&C are accepted |
+| 2+    | Command handlers            | `start`, `my_id`, your custom handlers         |
 
 ## Prerequisites
 
@@ -109,22 +111,25 @@ Send `/start` to your bot. If it replies, you're good to go.
 Configuration is loaded from `config.yaml` and can be overridden by environment variables with the `MY_BOT_` prefix (
 uppercased automatically). Environment variables take precedence over the config file.
 
-| Config key            | Env variable                 | Description                                  |
-|-----------------------|------------------------------|----------------------------------------------|
-| `token`               | `MY_BOT_TOKEN`               | Telegram Bot API token                       |
-| `webhook_domain`      | `MY_BOT_WEBHOOK_DOMAIN`      | Public HTTPS domain for the webhook          |
-| `webhook_port`        | `MY_BOT_WEBHOOK_PORT`        | Port to listen on (default: `8080`)          |
-| `webhook_secret`      | `MY_BOT_WEBHOOK_SECRET`      | Secret for validating webhook requests       |
-| `webapp_domain`       | `MY_BOT_WEBAPP_DOMAIN`       | Public HTTPS domain for the WebApp           |
-| `webapp_port`         | `MY_BOT_WEBAPP_PORT`         | Port for the WebApp server (default: `8081`) |
-| `static_content_path` | `MY_BOT_STATIC_CONTENT_PATH` | Path to static assets directory              |
-| `db_dsn`              | `MY_BOT_DB_DSN`              | PostgreSQL connection string                 |
-| `redis_addr`          | `MY_BOT_REDIS_ADDR`          | Redis address (e.g. `localhost:6375`)        |
-| `redis_user`          | `MY_BOT_REDIS_USER`          | Redis username                               |
-| `redis_pass`          | `MY_BOT_REDIS_PASS`          | Redis password                               |
-| `debug`               | `MY_BOT_DEBUG`               | Set to `true` for verbose JSON logging       |
+| Config key                     | Env variable                          | Required | Description                                             |
+|--------------------------------|---------------------------------------|----------|---------------------------------------------------------|
+| `token`                        | `MY_BOT_TOKEN`                        | yes      | Telegram Bot API token                                  |
+| `webhook_domain`               | `MY_BOT_WEBHOOK_DOMAIN`               | yes      | Public HTTPS domain for the webhook                     |
+| `webhook_port`                 | `MY_BOT_WEBHOOK_PORT`                 | yes      | Port to listen on (default: `8080`)                     |
+| `webhook_secret`               | `MY_BOT_WEBHOOK_SECRET`               | yes      | Secret for validating webhook requests                  |
+| `webapp_domain`                | `MY_BOT_WEBAPP_DOMAIN`                | yes      | Public HTTPS domain for the WebApp                      |
+| `webapp_port`                  | `MY_BOT_WEBAPP_PORT`                  | yes      | Port for the WebApp server (default: `8081`)            |
+| `static_content_path`          | `MY_BOT_STATIC_CONTENT_PATH`          | yes      | Path to static assets directory                         |
+| `db_dsn`                       | `MY_BOT_DB_DSN`                       | yes      | PostgreSQL connection string                            |
+| `redis_addr`                   | `MY_BOT_REDIS_ADDR`                   | yes      | Redis address (e.g. `localhost:6375`)                   |
+| `redis_user`                   | `MY_BOT_REDIS_USER`                   | yes      | Redis username                                          |
+| `redis_pass`                   | `MY_BOT_REDIS_PASS`                   | yes      | Redis password                                          |
+| `redis_use_ssl`                | `MY_BOT_REDIS_USE_SSL`                | no       | Any non-empty value connects to Redis over TLS 1.2+     |
+| `terms_and_conditions_version` | `MY_BOT_TERMS_AND_CONDITIONS_VERSION` | no       | Version users must accept (default: `v1.0.0`)           |
+| `debug`                        | `MY_BOT_DEBUG`                        | no       | `true` for a verbose console logger; JSON logs otherwise |
 
-All fields are required at startup — the bot will refuse to start if any are missing.
+The required keys are checked at startup — the bot exits if any of them resolves to an empty value. `webhook_port` and
+`webapp_port` are required but have defaults, so they never fail this check unless explicitly set to an empty value.
 
 ## Database Migrations
 
@@ -155,20 +160,38 @@ docker build -t my-telegram-bot .
 ```
 
 The multi-stage build produces a minimal image based on `scratch` (~5 MB) containing only the compiled binary, CA
-certificates, locale files, and static assets.
+certificates, locale files, and static assets. The image bakes in `MY_BOT_STATIC_CONTENT_PATH=/app/static` and starts the
+binary with `--locale-path /app/locale`, so only the remaining config keys need to be supplied at runtime.
+
+Cross-compilation is wired up via BuildKit's `TARGETOS`/`TARGETARCH`:
+
+```shell
+docker buildx build --platform linux/amd64,linux/arm64 -t my-telegram-bot .
+```
 
 ## Adding Your Own Handlers
 
-1. Create a new handler struct implementing `CheckUpdate()` and `HandleUpdate()`.
+1. Create a new handler struct implementing gotgbot's `ext.Handler`: `CheckUpdate()`, `HandleUpdate()`, and `Name()`.
 2. Register it in `main.go` with the appropriate priority group.
 
 Command handlers go in group 2 or higher. Use groups -2 and -1 for context-enrichment middleware. The
 `TermsAndConditionsHandler` at group 0 acts as a gate — any handler in group 2+ can assume the user has accepted T&C.
 
+## Redis Conversation Storage
+
+`handlers/helpers` provides `NewRedisConversationStorage(config, botUsername)`, a `conversation.Storage` implementation
+backed by Redis (keys expire after 3 days). Nothing constructs it by default — the `redis_*` config keys are validated at
+startup, but the connection is only opened when you build a gotgbot conversation handler and pass this storage to it.
+
 ## Adding Locales
 
 1. Create `locale/<lang>.yaml` and `locale/<lang>_commands.yaml`.
-2. Pass `--locale-path ./locale` (default) and set the locale in `MiscContextHandler`.
+2. Point `--locale-path` at the folder if it isn't the default `./locale`.
+
+The locale is picked per user from Telegram's `language_code` — `MiscContextHandler` loads the matching texts into
+`ctx.Data["texts"]`, and the WebApp server does the same from the validated initData. A missing locale file falls back to
+`en`. Command descriptions come from `<lang>_commands.yaml`: the `general` key is published to all private chats, and the
+`admin` key is merged in for users flagged `is_admin` in the database.
 
 ## Rate Limiting
 
