@@ -44,6 +44,10 @@ func main() {
 		"redis_pass",
 	}
 	config := configuration.Configure(requiredConfig)
+
+	// Reconfigure the logger from the resolved config before anything else runs.
+	logger.Configure(config.GetDebug())
+
 	myBot := bot.NewBot(config)
 
 	if config.GetDebug() {

@@ -34,16 +34,16 @@ func NewRateLimiterPool[T RateLimiter, Conf any](
 }
 
 func (pool *RateLimiterPool[T, Conf]) WaitLimiter(ctx context.Context, limiterID int64) error {
-	pool.mu.RLock()
-	var limiter T
-	if l, ok := pool.limiters[limiterID]; ok {
-		pool.mu.RUnlock()
-		limiter = l
-	} else {
-		pool.mu.RUnlock()
+	// Get-or-create atomically under a single write lock so concurrent first
+	// requests for the same ID share one limiter instead of racing to create
+	// (and overwrite) separate ones. The lock is released before Wait, which blocks.
+	pool.mu.Lock()
+	limiter, ok := pool.limiters[limiterID]
+	if !ok {
 		limiter = pool.createLimiter(pool.limiterConfig)
-		go pool.addLimiter(limiterID, limiter)
+		pool.limiters[limiterID] = limiter
 	}
+	pool.mu.Unlock()
 	return limiter.Wait(ctx)
 }
 
@@ -62,10 +62,4 @@ func (pool *RateLimiterPool[T, Conf]) removeStaleLimiters(staleDuration time.Dur
 			delete(pool.limiters, limiterID)
 		}
 	}
-}
-
-func (pool *RateLimiterPool[T, Conf]) addLimiter(limiterID int64, limiter T) {
-	pool.mu.Lock()
-	pool.limiters[limiterID] = limiter
-	pool.mu.Unlock()
 }

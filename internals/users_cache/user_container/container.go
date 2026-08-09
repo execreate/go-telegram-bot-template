@@ -32,8 +32,14 @@ func (tgUser *TgUserContainer) IsStale(threshold time.Duration) bool {
 	return false
 }
 
+// GetRaw returns a copy of the cached user. A copy (rather than the live pointer)
+// is returned so callers can read it without racing the in-place updates that Get
+// and TermsAndConditionsAccepted perform under the container lock.
 func (tgUser *TgUserContainer) GetRaw() *tables.TelegramUser {
-	return tgUser.user
+	tgUser.mu.RLock()
+	defer tgUser.mu.RUnlock()
+	userCopy := *tgUser.user
+	return &userCopy
 }
 
 func (tgUser *TgUserContainer) Get(effectiveUser *gotgbot.User) (*tables.TelegramUser, bool) {
@@ -70,7 +76,9 @@ func (tgUser *TgUserContainer) Get(effectiveUser *gotgbot.User) (*tables.Telegra
 		tgUser.user.LanguageCode = effectiveUser.LanguageCode
 	}
 
-	return tgUser.user, userDetailsHaveChanged
+	// Return a copy so the caller never holds the live pointer (see GetRaw).
+	userCopy := *tgUser.user
+	return &userCopy, userDetailsHaveChanged
 }
 
 // TermsAndConditionsAccepted method updates the user's accepted terms and conditions info

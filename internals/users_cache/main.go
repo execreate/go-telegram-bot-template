@@ -39,13 +39,11 @@ func NewTgUsersCache(dbPool *pgxpool.Pool, cleanUpInterval, staleThreshold time.
 }
 
 func (tgUsrPool *TgUsersCache) GetByUsername(username string) (*tables.TelegramUser, error) {
-	tgUsrPool.mu.RLock()
-	defer tgUsrPool.mu.RUnlock()
-
 	if strings.HasPrefix(username, "@") {
 		username = username[1:]
 	}
 
+	// This lookup always goes to the DB; no lock is held for the query.
 	rows, _ := tgUsrPool.dbPool.Query(
 		context.Background(),
 		//language=SQL
@@ -68,26 +66,31 @@ func (tgUsrPool *TgUsersCache) GetByUsername(username string) (*tables.TelegramU
 		return nil, err
 	}
 
-	if _, ok := tgUsrPool.users[telegramUser.ID]; !ok {
+	tgUsrPool.mu.RLock()
+	_, exists := tgUsrPool.users[telegramUser.ID]
+	tgUsrPool.mu.RUnlock()
+	if !exists {
 		go tgUsrPool.addNewUser(
 			telegramUser.ID,
 			user_container.NewTelegramUserContainer(&telegramUser),
 		)
 	}
 
-	return &telegramUser, nil
+	// Return a copy so the caller never shares the pointer stored in the container.
+	result := telegramUser
+	return &result, nil
 }
 
 func (tgUsrPool *TgUsersCache) GetByID(userID int64) (*tables.TelegramUser, error) {
-	tgUsrPool.mu.RLock()
-	defer tgUsrPool.mu.RUnlock()
-
 	// try to serve from memory
-	if userContainer, ok := tgUsrPool.users[userID]; ok {
+	tgUsrPool.mu.RLock()
+	userContainer, ok := tgUsrPool.users[userID]
+	tgUsrPool.mu.RUnlock()
+	if ok {
 		return userContainer.GetRaw(), nil
 	}
 
-	// serve the user from database if it's not in memory
+	// serve the user from database if it's not in memory (no lock held for the query)
 	rows, _ := tgUsrPool.dbPool.Query(
 		context.Background(),
 		//language=SQL
@@ -110,22 +113,30 @@ func (tgUsrPool *TgUsersCache) GetByID(userID int64) (*tables.TelegramUser, erro
 		return nil, err
 	}
 
-	if _, ok := tgUsrPool.users[telegramUser.ID]; !ok {
+	tgUsrPool.mu.RLock()
+	_, exists := tgUsrPool.users[telegramUser.ID]
+	tgUsrPool.mu.RUnlock()
+	if !exists {
 		go tgUsrPool.addNewUser(
 			telegramUser.ID,
 			user_container.NewTelegramUserContainer(&telegramUser),
 		)
 	}
 
-	return &telegramUser, nil
+	// Return a copy so the caller never shares the pointer stored in the container.
+	result := telegramUser
+	return &result, nil
 }
 
 func (tgUsrPool *TgUsersCache) Get(effectiveUser *gotgbot.User) (*tables.TelegramUser, error) {
+	// Only the map lookup needs the lock; the DB round-trip below must not hold it,
+	// or it would block the cleanup goroutine and every writer for the query's duration.
 	tgUsrPool.mu.RLock()
-	defer tgUsrPool.mu.RUnlock()
+	userContainer, ok := tgUsrPool.users[effectiveUser.Id]
+	tgUsrPool.mu.RUnlock()
 
 	// serve the user from memory if it's already there
-	if userContainer, ok := tgUsrPool.users[effectiveUser.Id]; ok {
+	if ok {
 		user, needsUpdate := userContainer.Get(effectiveUser)
 
 		if needsUpdate {
@@ -247,39 +258,43 @@ func (tgUsrPool *TgUsersCache) Get(effectiveUser *gotgbot.User) (*tables.Telegra
 		user_container.NewTelegramUserContainer(&telegramUser),
 	)
 
-	return &telegramUser, nil
+	// Return a copy so the caller never shares the pointer stored in the container.
+	result := telegramUser
+	return &result, nil
 }
 
 func (tgUsrPool *TgUsersCache) UserHasAcceptedTermsAndConditions(userID int64, version string) error {
+	// Grab the container under the lock, then release it before the DB write.
 	tgUsrPool.mu.RLock()
-	defer tgUsrPool.mu.RUnlock()
+	userContainer, ok := tgUsrPool.users[userID]
+	tgUsrPool.mu.RUnlock()
 
-	if userContainer, ok := tgUsrPool.users[userID]; ok {
-		acceptedOn := time.Now()
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
-		defer cancel()
-		if _, err := tgUsrPool.dbPool.Exec(
-			ctx,
-			//language=SQL
-			`update telegram_users
-			set accepted_terms_and_conditions_on = $1, accepted_terms_and_conditions_version = $2
-			where id = $3`,
-			acceptedOn,
-			version,
-			userID,
-		); err != nil {
-			logger.Log.Error(
-				"failed to update user details in database",
-				zap.Int64("user_id", userID),
-				zap.Error(err),
-			)
-			return err
-		}
-		userContainer.TermsAndConditionsAccepted(acceptedOn, version)
-		return nil
+	if !ok {
+		return errors.New("user not found in cache, should never come here")
 	}
 
-	return errors.New("user not found in cache, should never come here")
+	acceptedOn := time.Now()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	defer cancel()
+	if _, err := tgUsrPool.dbPool.Exec(
+		ctx,
+		//language=SQL
+		`update telegram_users
+		set accepted_terms_and_conditions_on = $1, accepted_terms_and_conditions_version = $2
+		where id = $3`,
+		acceptedOn,
+		version,
+		userID,
+	); err != nil {
+		logger.Log.Error(
+			"failed to update user details in database",
+			zap.Int64("user_id", userID),
+			zap.Error(err),
+		)
+		return err
+	}
+	userContainer.TermsAndConditionsAccepted(acceptedOn, version)
+	return nil
 }
 
 func (tgUsrPool *TgUsersCache) addNewUser(userID int64, user *user_container.TgUserContainer) {

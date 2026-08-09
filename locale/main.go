@@ -2,6 +2,7 @@ package locale
 
 import (
 	"flag"
+	"sync"
 
 	"github.com/execreate/go-telegram-bot-template/internals/logger"
 	"github.com/spf13/pflag"
@@ -11,7 +12,9 @@ import (
 
 var (
 	textLocales   = map[string]*viper.Viper{}
+	textLocalesMu sync.RWMutex
 	cmdLocales    = map[string]*viper.Viper{}
+	cmdLocalesMu  sync.RWMutex
 	localesConfig *viper.Viper
 )
 
@@ -31,9 +34,14 @@ func GetTextTranslations(locale string) (*viper.Viper, error) {
 	if locale == "" {
 		return GetTextTranslations("en")
 	}
-	if textLocales[locale] != nil {
-		return textLocales[locale], nil
+
+	textLocalesMu.RLock()
+	cached := textLocales[locale]
+	textLocalesMu.RUnlock()
+	if cached != nil {
+		return cached, nil
 	}
+
 	config := viper.New()
 	config.SetConfigName(locale)
 	config.SetConfigType("yaml")
@@ -51,7 +59,10 @@ func GetTextTranslations(locale string) (*viper.Viper, error) {
 		}
 		return nil, err
 	}
+
+	textLocalesMu.Lock()
 	textLocales[locale] = config
+	textLocalesMu.Unlock()
 	return config, nil
 }
 
@@ -60,9 +71,14 @@ func GetCmdTranslations(locale string) (*viper.Viper, error) {
 	if locale == "" {
 		return GetCmdTranslations("en")
 	}
-	if cmdLocales[locale] != nil {
-		return cmdLocales[locale], nil
+
+	cmdLocalesMu.RLock()
+	cached := cmdLocales[locale]
+	cmdLocalesMu.RUnlock()
+	if cached != nil {
+		return cached, nil
 	}
+
 	config := viper.New()
 	config.SetConfigName(locale + "_commands")
 	config.SetConfigType("yaml")
@@ -80,6 +96,9 @@ func GetCmdTranslations(locale string) (*viper.Viper, error) {
 		}
 		return nil, err
 	}
+
+	cmdLocalesMu.Lock()
 	cmdLocales[locale] = config
+	cmdLocalesMu.Unlock()
 	return config, nil
 }

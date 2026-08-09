@@ -2,6 +2,8 @@ package gin_server
 
 import (
 	"net/http"
+	"strconv"
+	"time"
 
 	"github.com/PaulSonOfLars/gotgbot/v2/ext"
 	"github.com/execreate/go-telegram-bot-template/internals/logger"
@@ -11,6 +13,11 @@ import (
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
 )
+
+// maxWebAppAuthAge bounds how old a WebApp initData payload may be. The HMAC check
+// alone accepts a valid payload forever, so we additionally reject stale auth_date
+// values to limit the replay window.
+const maxWebAppAuthAge = 12 * time.Hour
 
 type TgWebAppUser struct {
 	ID           int64  `json:"id"`
@@ -33,6 +40,26 @@ func (srv *Server) validateWebAppQuery(c *gin.Context, successCallBack func(*gin
 	}
 
 	if ok {
+		// Reject payloads whose auth_date is missing, malformed, or too old to
+		// guard against replay of a previously captured (still hash-valid) query.
+		authDateSec, err := strconv.ParseInt(queryValues.Get("auth_date"), 10, 64)
+		if err != nil {
+			c.Data(
+				http.StatusBadRequest,
+				"text/plain; charset=utf-8",
+				[]byte("validation failed; invalid auth_date."),
+			)
+			return
+		}
+		if age := time.Since(time.Unix(authDateSec, 0)); age > maxWebAppAuthAge {
+			c.Data(
+				http.StatusUnauthorized,
+				"text/plain; charset=utf-8",
+				[]byte("validation failed; auth_date expired."),
+			)
+			return
+		}
+
 		var webAppUser TgWebAppUser
 		if err := json.Unmarshal([]byte(queryValues.Get("user")), &webAppUser); err != nil {
 			c.Data(

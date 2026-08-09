@@ -3,10 +3,10 @@ module github.com/execreate/go-telegram-bot-template
 go 1.26
 
 require (
-	github.com/PaulSonOfLars/gotgbot/v2 v2.0.0-rc.34
+	github.com/PaulSonOfLars/gotgbot/v2 v2.0.0-rc.36
 	github.com/gin-gonic/gin v1.12.0
 	github.com/goccy/go-json v0.10.6
-	github.com/jackc/pgx/v5 v5.9.1
+	github.com/jackc/pgx/v5 v5.10.0
 	github.com/redis/go-redis/v9 v9.18.0
 	github.com/samber/slog-zap/v2 v2.6.4
 	github.com/spf13/pflag v1.0.10
