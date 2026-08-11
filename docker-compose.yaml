@@ -1,10 +1,18 @@
 services:
     redis:
         image: redis:7
-        environment:
-            REDIS_PASSWORD: password
+        # The official image has no REDIS_PASSWORD env var,
+        # auth is set on the server itself. requirepass sets the
+        # password of the built-in "default" ACL user, which is what
+        # redis_user/redis_pass in config.dist.yaml authenticate as.
+        command: [ "redis-server", "--requirepass", "password" ]
         ports:
             - "6375:6379"
+        healthcheck:
+            test: [ "CMD-SHELL", "redis-cli --no-auth-warning -a password ping | grep -q PONG" ]
+            interval: 3s
+            timeout: 3s
+            retries: 10
 
     postgres:
         image: postgres:17
