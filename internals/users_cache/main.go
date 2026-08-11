@@ -271,9 +271,7 @@ func (tgUsrPool *TgUsersCache) UserHasAcceptedTermsAndConditions(userID int64, v
 	tgUsrPool.mu.RUnlock()
 
 	if !ok {
-		msg := "user not found in cache, but must be have been added already"
-		logger.Log.Error(msg)
-		return fmt.Errorf(msg)
+		return fmt.Errorf("user not found in cache, but must be have been added already")
 	}
 
 	acceptedOn := time.Now()
