@@ -3,13 +3,13 @@ package bot
 import "sync"
 
 type ChatsMap struct {
-	chats map[int64]interface{}
+	chats map[int64]any
 	mu    sync.RWMutex
 }
 
 func NewChatsMap() *ChatsMap {
 	return &ChatsMap{
-		chats: make(map[int64]interface{}),
+		chats: make(map[int64]any),
 		mu:    sync.RWMutex{},
 	}
 }

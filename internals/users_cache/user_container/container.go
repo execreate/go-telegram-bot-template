@@ -1,6 +1,7 @@
 package user_container
 
 import (
+	"database/sql"
 	"sync"
 	"time"
 
@@ -48,31 +49,23 @@ func (tgUser *TgUserContainer) Get(effectiveUser *gotgbot.User) (*tables.Telegra
 
 	tgUser.lastActivity = time.Now()
 
+	// Telegram sends an empty username when the user has none, which maps to a NULL
+	// column. Comparing the whole NullString catches every transition — set, unset,
+	// and one username swapped for another.
+	username := sql.NullString{
+		String: effectiveUser.Username,
+		Valid:  effectiveUser.Username != "",
+	}
+
 	userDetailsHaveChanged := tgUser.user.FirstName != effectiveUser.FirstName ||
 		tgUser.user.LastName != effectiveUser.LastName ||
-		tgUser.user.LanguageCode != effectiveUser.LanguageCode
-
-	if tgUser.user.Username.Valid && effectiveUser.Username == "" {
-		userDetailsHaveChanged = true
-		tgUser.user.Username.Valid = false
-		tgUser.user.Username.String = ""
-	}
-
-	if !tgUser.user.Username.Valid && effectiveUser.Username != "" {
-		userDetailsHaveChanged = true
-		tgUser.user.Username.Valid = true
-		tgUser.user.Username.String = effectiveUser.Username
-	}
+		tgUser.user.LanguageCode != effectiveUser.LanguageCode ||
+		tgUser.user.Username != username
 
 	if userDetailsHaveChanged {
 		tgUser.user.FirstName = effectiveUser.FirstName
 		tgUser.user.LastName = effectiveUser.LastName
-		tgUser.user.Username.String = effectiveUser.Username
-		if len(tgUser.user.Username.String) > 0 {
-			tgUser.user.Username.Valid = true
-		} else {
-			tgUser.user.Username.Valid = false
-		}
+		tgUser.user.Username = username
 		tgUser.user.LanguageCode = effectiveUser.LanguageCode
 	}
 
