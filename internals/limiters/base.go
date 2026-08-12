@@ -2,6 +2,7 @@ package limiters
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 )
@@ -13,24 +14,30 @@ type RateLimiter interface {
 
 type RateLimiterPool[T RateLimiter, Conf any] struct {
 	limiterConfig Conf
-	createLimiter func(Conf) T
+	createLimiter func(Conf) (T, error)
 	limiters      map[int64]T
 	mu            sync.RWMutex
 }
 
 func NewRateLimiterPool[T RateLimiter, Conf any](
-	createLimiter func(Conf) T,
+	createLimiter func(Conf) (T, error),
 	limiterConfig Conf,
 	cleanUpInterval time.Duration,
 	staleThreshold time.Duration,
-) *RateLimiterPool[T, Conf] {
+) (*RateLimiterPool[T, Conf], error) {
+	// Limiters are created lazily, on the first request for a chat. Build one here and
+	// throw it away so a bad config fails at startup rather than mid-request, hours in.
+	if _, err := createLimiter(limiterConfig); err != nil {
+		return nil, fmt.Errorf("invalid rate limiter config: %w", err)
+	}
+
 	pool := &RateLimiterPool[T, Conf]{
 		limiters:      make(map[int64]T),
 		createLimiter: createLimiter,
 		limiterConfig: limiterConfig,
 	}
 	go pool.watchStaleLimiters(cleanUpInterval, staleThreshold)
-	return pool
+	return pool, nil
 }
 
 func (pool *RateLimiterPool[T, Conf]) WaitLimiter(ctx context.Context, limiterID int64) error {
@@ -40,7 +47,12 @@ func (pool *RateLimiterPool[T, Conf]) WaitLimiter(ctx context.Context, limiterID
 	pool.mu.Lock()
 	limiter, ok := pool.limiters[limiterID]
 	if !ok {
-		limiter = pool.createLimiter(pool.limiterConfig)
+		newLimiter, err := pool.createLimiter(pool.limiterConfig)
+		if err != nil {
+			pool.mu.Unlock()
+			return fmt.Errorf("failed to create rate limiter for %d: %w", limiterID, err)
+		}
+		limiter = newLimiter
 		pool.limiters[limiterID] = limiter
 	}
 	pool.mu.Unlock()

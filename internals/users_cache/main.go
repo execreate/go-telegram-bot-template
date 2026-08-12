@@ -15,18 +15,25 @@ import (
 	"github.com/execreate/go-telegram-bot-template/internals/logger"
 	"github.com/execreate/go-telegram-bot-template/internals/users_cache/user_container"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/pgconn"
 	"go.uber.org/zap"
 )
 
+// Querier is the slice of the database API this cache needs. *pgxpool.Pool satisfies
+// it as-is, so callers pass their pool unchanged; tests substitute a fake.
+type Querier interface {
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+}
+
 type TgUsersCache struct {
-	dbPool         *pgxpool.Pool
+	dbPool         Querier
 	users          map[int64]*user_container.TgUserContainer
 	mu             sync.RWMutex
 	staleThreshold time.Duration
 }
 
-func NewTgUsersCache(dbPool *pgxpool.Pool, cleanUpInterval, staleThreshold time.Duration) *TgUsersCache {
+func NewTgUsersCache(dbPool Querier, cleanUpInterval, staleThreshold time.Duration) *TgUsersCache {
 	tgUsrCache := &TgUsersCache{
 		dbPool:         dbPool,
 		users:          make(map[int64]*user_container.TgUserContainer),
@@ -128,7 +135,7 @@ func (tgUsrPool *TgUsersCache) Get(effectiveUser *gotgbot.User) (*tables.Telegra
 		user, needsUpdate := userContainer.Get(effectiveUser)
 
 		if needsUpdate {
-			go func(db *pgxpool.Pool, user *tables.TelegramUser) {
+			go func(db Querier, user *tables.TelegramUser) {
 				ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 				defer cancel()
 				var err error

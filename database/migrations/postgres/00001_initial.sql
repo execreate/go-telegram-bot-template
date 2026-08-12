@@ -28,6 +28,7 @@ CREATE TABLE "telegram_users"
     "username"                              varchar(250),
     "language_code"                         varchar(3),
     "is_admin"                              boolean     DEFAULT FALSE,
+    "is_owner"                              boolean     DEFAULT FALSE,
     "accepted_terms_and_conditions_on"      timestamptz DEFAULT NULL,
     "accepted_terms_and_conditions_version" varchar(10) DEFAULT NULL,
     PRIMARY KEY ("id")

@@ -1,5 +1,19 @@
-admin:
+default:
+    start: Start the bot
+
+all_private_chats:
+    start: Start the bot
+
+all_group_chats:
+    start: Start the bot
+
+all_chat_administrators:
+    start: Start the bot
+
+bot_admin:
+    start: Start the bot
     my_id: Get chat and user IDs
 
-general:
+bot_owner:
     start: Start the bot
+    my_id: Get chat and user IDs

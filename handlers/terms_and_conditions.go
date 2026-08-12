@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
+	"slices"
 
 	"github.com/PaulSonOfLars/gotgbot/v2"
 	"github.com/PaulSonOfLars/gotgbot/v2/ext"
@@ -9,35 +11,47 @@ import (
 	"github.com/execreate/go-telegram-bot-template/internals/bot"
 	"github.com/execreate/go-telegram-bot-template/internals/gin_server"
 	"github.com/execreate/go-telegram-bot-template/internals/logger"
+	"github.com/execreate/go-telegram-bot-template/locale"
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
 )
 
 type TermsAndConditionsHandler struct {
-	bot      *bot.MyBot
-	htmlFile string
-	version  string
+	bot                *bot.MyBot
+	htmlFilename       string
+	version            string
+	supportedLanguages []string
 }
 
-func NewTermsAndConditionsHandler(bot *bot.MyBot, srv *gin_server.Server, version string) *TermsAndConditionsHandler {
+func NewTermsAndConditionsHandler(
+	bot *bot.MyBot,
+	srv *gin_server.Server,
+	supportedLanguages []string,
+	version string,
+) (*TermsAndConditionsHandler, error) {
 	termsHandler := &TermsAndConditionsHandler{
-		bot:      bot,
-		htmlFile: "terms_and_conditions.html",
-		version:  version,
+		bot:                bot,
+		htmlFilename:       "terms_and_conditions",
+		version:            version,
+		supportedLanguages: supportedLanguages,
 	}
 
-	srv.AddStaticFileHandler(termsHandler.htmlFile)
+	for _, lang := range supportedLanguages {
+		srv.AddStaticFileHandler(
+			fmt.Sprintf("%s.%s.html", termsHandler.htmlFilename, lang),
+		)
+	}
 
 	if err := srv.AddWebAppRequestHandler(
 		gin_server.GET,
 		"/accept_terms",
 		termsHandler.handleAcceptTermsAndConditions,
 	); err != nil {
-		logger.Log.Fatal("failed to register accept_terms handler", zap.Error(err))
+		return nil, fmt.Errorf("failed to register accept_terms handler: %w", err)
 	}
 
-	return termsHandler
+	return termsHandler, nil
 }
 
 func (handler *TermsAndConditionsHandler) CheckUpdate(_ *gotgbot.Bot, ctx *ext.Context) bool {
@@ -58,6 +72,18 @@ func (handler *TermsAndConditionsHandler) HandleUpdate(b *gotgbot.Bot, ctx *ext.
 	texts := ctx.Data["texts"].(*viper.Viper)
 	user := ctx.Data["db_user"].(*tables.TelegramUser)
 
+	pageLanguage := locale.FallbackLanguage
+	if slices.Contains(handler.supportedLanguages, user.LanguageCode) {
+		pageLanguage = user.LanguageCode
+	}
+
+	pageURL := fmt.Sprintf(
+		"%s/%s.%s.html",
+		ctx.Data["webapp_domain"],
+		handler.htmlFilename,
+		pageLanguage,
+	)
+
 	opts := &gotgbot.SendMessageOpts{
 		ReplyMarkup: gotgbot.InlineKeyboardMarkup{
 			InlineKeyboard: [][]gotgbot.InlineKeyboardButton{
@@ -65,7 +91,7 @@ func (handler *TermsAndConditionsHandler) HandleUpdate(b *gotgbot.Bot, ctx *ext.
 					{
 						Text: "Terms and Conditions",
 						WebApp: &gotgbot.WebAppInfo{
-							Url: ctx.Data["webapp_domain"].(string) + "/" + handler.htmlFile,
+							Url: pageURL,
 						},
 					},
 				},

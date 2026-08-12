@@ -18,6 +18,8 @@ var (
 	localesConfig *viper.Viper
 )
 
+const FallbackLanguage = "en"
+
 func init() {
 	localesConfig = viper.New()
 	flag.String("locale-path", "./locale", "path to the folder where locale files are located")
@@ -29,10 +31,26 @@ func init() {
 	}
 }
 
+// SetPath overrides the directory locale files are read from and drops the parsed
+// locales already cached under the previous path. The --locale-path flag remains the
+// default source; this exists for tests and for embedding the template in a binary
+// that resolves its own paths.
+func SetPath(path string) {
+	textLocalesMu.Lock()
+	textLocales = map[string]*viper.Viper{}
+	textLocalesMu.Unlock()
+
+	cmdLocalesMu.Lock()
+	cmdLocales = map[string]*viper.Viper{}
+	cmdLocalesMu.Unlock()
+
+	localesConfig.Set("locale-path", path)
+}
+
 // GetTextTranslations parses the locale file and returns the viper config.
 func GetTextTranslations(locale string) (*viper.Viper, error) {
 	if locale == "" {
-		return GetTextTranslations("en")
+		return GetTextTranslations(FallbackLanguage)
 	}
 
 	textLocalesMu.RLock()
@@ -52,10 +70,10 @@ func GetTextTranslations(locale string) (*viper.Viper, error) {
 			"failed to get text translations for locale",
 			zap.String("locale", locale),
 			zap.String("locale_path", localesConfig.GetString("locale-path")),
+			zap.Error(err),
 		)
-		// fallback locale is English
-		if locale != "en" {
-			return GetTextTranslations("en")
+		if locale != FallbackLanguage {
+			return GetTextTranslations(FallbackLanguage)
 		}
 		return nil, err
 	}
@@ -69,7 +87,7 @@ func GetTextTranslations(locale string) (*viper.Viper, error) {
 // GetCmdTranslations parses the locale file and returns the viper config.
 func GetCmdTranslations(locale string) (*viper.Viper, error) {
 	if locale == "" {
-		return GetCmdTranslations("en")
+		return GetCmdTranslations(FallbackLanguage)
 	}
 
 	cmdLocalesMu.RLock()
@@ -89,10 +107,10 @@ func GetCmdTranslations(locale string) (*viper.Viper, error) {
 			"failed to get command translations for locale",
 			zap.String("locale", locale),
 			zap.String("locale_path", localesConfig.GetString("locale-path")),
+			zap.Error(err),
 		)
-		// fallback locale is English
-		if locale != "en" {
-			return GetCmdTranslations("en")
+		if locale != FallbackLanguage {
+			return GetCmdTranslations(FallbackLanguage)
 		}
 		return nil, err
 	}

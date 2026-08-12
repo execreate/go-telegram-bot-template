@@ -2,6 +2,8 @@ package limiters
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -19,11 +21,23 @@ type TokenBucketRateLimiter struct {
 	mu       sync.Mutex
 }
 
-func NewTokenBucketRateLimiter(conf *TokenBucketRateLimiterConfig) *TokenBucketRateLimiter {
+func NewTokenBucketRateLimiter(conf *TokenBucketRateLimiterConfig) (*TokenBucketRateLimiter, error) {
+	if conf == nil {
+		return nil, errors.New("token bucket rate limiter config must not be nil")
+	}
+	if conf.Burst <= 0 {
+		// rate.Limiter with a zero burst never admits anything, which would stall every
+		// call to the chat rather than slow it down.
+		return nil, fmt.Errorf("burst must be greater than 0, got %d", conf.Burst)
+	}
+	if conf.Limit <= 0 {
+		return nil, fmt.Errorf("limit must be greater than 0, got %v", conf.Limit)
+	}
+
 	return &TokenBucketRateLimiter{
 		limiter:  rate.NewLimiter(conf.Limit, conf.Burst),
 		lastUsed: time.Now(),
-	}
+	}, nil
 }
 
 func (c *TokenBucketRateLimiter) IsStale(d time.Duration) bool {

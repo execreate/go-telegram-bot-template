@@ -13,6 +13,7 @@ type TelegramUser struct {
 	LanguageCode string         `db:"language_code"`
 
 	IsAdmin bool `db:"is_admin"`
+	IsOwner bool `db:"is_owner"`
 
 	AcceptedTermsAndConditionsOn      sql.NullTime   `db:"accepted_terms_and_conditions_on"`
 	AcceptedTermsAndConditionsVersion sql.NullString `db:"accepted_terms_and_conditions_version"`

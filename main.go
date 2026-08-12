@@ -24,6 +24,8 @@ const (
 	_shutdownHardPeriod = 3 * time.Second
 )
 
+var supportedLanguages = []string{"en"}
+
 func main() {
 	rootCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -43,12 +45,18 @@ func main() {
 		"redis_user",
 		"redis_pass",
 	}
-	config := configuration.Configure(requiredConfig)
+	config, err := configuration.Configure(requiredConfig)
+	if err != nil {
+		logger.Log.Fatal("failed to load configuration", zap.Error(err))
+	}
 
 	// Reconfigure the logger from the resolved config before anything else runs.
 	logger.Configure(config.GetDebug())
 
-	myBot := bot.NewBot(config)
+	myBot, err := bot.NewBot(config, supportedLanguages)
+	if err != nil {
+		logger.Log.Fatal("failed to create the bot", zap.Error(err))
+	}
 
 	if config.GetDebug() {
 		logger.Log.Info("Running in debug mode, logging all requests and responses.")
@@ -64,9 +72,16 @@ func main() {
 	myBot.AddHandlerToGroup(contextual.NewMiscContextHandler(config.GetWebAppDomain()), -2)
 
 	// terms and conditions group
-	myBot.AddHandlerToGroup(
-		handlers.NewTermsAndConditionsHandler(myBot, srv, config.GetTermsAndConditionsVersion()), 0,
+	termsHandler, err := handlers.NewTermsAndConditionsHandler(
+		myBot,
+		srv,
+		supportedLanguages,
+		config.GetTermsAndConditionsVersion(),
 	)
+	if err != nil {
+		logger.Log.Fatal("failed to create the terms and conditions handler", zap.Error(err))
+	}
+	myBot.AddHandlerToGroup(termsHandler, 0)
 
 	// standalone commands group
 	myBot.AddHandlerToGroup(tgbotHandlers.NewCommand("start", handlers.Hello), 2)
@@ -84,7 +99,9 @@ func main() {
 	}()
 
 	// start bot
-	myBot.Run()
+	if err := myBot.Run(); err != nil {
+		logger.Log.Fatal("failed to start the bot", zap.Error(err))
+	}
 
 	// wait for shutdown signal
 	<-rootCtx.Done()
@@ -99,7 +116,7 @@ func main() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), _shutdownPeriod)
 	defer cancel()
 
-	err := server.Shutdown(shutdownCtx)
+	err = server.Shutdown(shutdownCtx)
 	stopOngoingGracefully()
 
 	if err != nil {

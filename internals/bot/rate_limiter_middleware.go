@@ -46,6 +46,8 @@ type rateLimitingBotClient struct {
 	// Inline existing client to call, allowing us to chain middlewares.
 	// Inlining also avoids us having to redefine helper methods part of the interface.
 	gotgbot.BotClient
+	// settings decide which limiter pool a chat ID is routed to.
+	settings            *Settings
 	privateChatLimiters *limiters.RateLimiterPool[*limiters.TokenBucketRateLimiter, *limiters.TokenBucketRateLimiterConfig]
 	groupChatLimiters   *limiters.RateLimiterPool[*limiters.SlidingWindowRateLimiter, *limiters.SlidingWindowRateLimiterConfig]
 }
@@ -82,7 +84,7 @@ func (b *rateLimitingBotClient) RequestWithContext(
 		case err != nil:
 			logger.Log.Error("failed to convert chatID to int64", zap.Error(err))
 			return nil, err
-		case GroupChats.IsGroupChat(chatIDInt64):
+		case b.settings.IsGroupChat(chatIDInt64):
 			if err := b.groupChatLimiters.WaitLimiter(ctx, chatIDInt64); err != nil {
 				logger.Log.Error("failed to wait for group chat rate limiter", zap.Error(err))
 				return nil, err
@@ -98,8 +100,36 @@ func (b *rateLimitingBotClient) RequestWithContext(
 	return b.BotClient.RequestWithContext(ctx, token, method, params, opts)
 }
 
-// newRateLimiterMiddleware is to initialize rate-limiting middleware for the bot client.
-func newRateLimiterMiddleware() gotgbot.BotClient {
+// newRateLimiterMiddleware is to initialize rate-limiting middleware for the bot
+// client. Calls to chats in groupChats are routed through the group limiter pool,
+// everything else through the private one.
+func newRateLimiterMiddleware(settings *Settings) (gotgbot.BotClient, error) {
+	privateChatLimiters, err := limiters.NewRateLimiterPool[*limiters.TokenBucketRateLimiter, *limiters.TokenBucketRateLimiterConfig](
+		limiters.NewTokenBucketRateLimiter,
+		&limiters.TokenBucketRateLimiterConfig{
+			Limit: rate.Every(time.Second),
+			Burst: 1,
+		},
+		time.Hour*4,
+		time.Hour*24,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create the private chat limiter pool: %w", err)
+	}
+
+	groupChatLimiters, err := limiters.NewRateLimiterPool[*limiters.SlidingWindowRateLimiter, *limiters.SlidingWindowRateLimiterConfig](
+		limiters.NewSlidingWindowRateLimiter,
+		&limiters.SlidingWindowRateLimiterConfig{
+			Window: time.Minute,
+			MaxN:   20,
+		},
+		time.Hour*4,
+		time.Hour*24,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create the group chat limiter pool: %w", err)
+	}
+
 	return &rateLimitingBotClient{
 		BotClient: &gotgbot.BaseBotClient{
 			Client:             http.Client{},
@@ -109,23 +139,8 @@ func newRateLimiterMiddleware() gotgbot.BotClient {
 				APIURL:  gotgbot.DefaultAPIURL,
 			},
 		},
-		privateChatLimiters: limiters.NewRateLimiterPool[*limiters.TokenBucketRateLimiter, *limiters.TokenBucketRateLimiterConfig](
-			limiters.NewTokenBucketRateLimiter,
-			&limiters.TokenBucketRateLimiterConfig{
-				Limit: rate.Every(time.Second),
-				Burst: 1,
-			},
-			time.Hour*4,
-			time.Hour*24,
-		),
-		groupChatLimiters: limiters.NewRateLimiterPool[*limiters.SlidingWindowRateLimiter, *limiters.SlidingWindowRateLimiterConfig](
-			limiters.NewSlidingWindowRateLimiter,
-			&limiters.SlidingWindowRateLimiterConfig{
-				Window: time.Minute,
-				MaxN:   20,
-			},
-			time.Hour*4,
-			time.Hour*24,
-		),
-	}
+		settings:            settings,
+		privateChatLimiters: privateChatLimiters,
+		groupChatLimiters:   groupChatLimiters,
+	}, nil
 }

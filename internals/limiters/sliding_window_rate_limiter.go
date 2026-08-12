@@ -2,12 +2,10 @@ package limiters
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
-
-	"github.com/execreate/go-telegram-bot-template/internals/logger"
-	"go.uber.org/zap"
 )
 
 type SlidingWindowRateLimiterConfig struct {
@@ -22,25 +20,22 @@ type SlidingWindowRateLimiter struct {
 	mu       sync.Mutex
 }
 
-func NewSlidingWindowRateLimiter(conf *SlidingWindowRateLimiterConfig) *SlidingWindowRateLimiter {
+func NewSlidingWindowRateLimiter(conf *SlidingWindowRateLimiterConfig) (*SlidingWindowRateLimiter, error) {
+	if conf == nil {
+		return nil, errors.New("sliding window rate limiter config must not be nil")
+	}
 	if conf.MaxN <= 0 {
-		logger.Log.Fatal(
-			"maxN must be greater than 0",
-			zap.Int("maxN", conf.MaxN),
-		)
+		return nil, fmt.Errorf("maxN must be greater than 0, got %d", conf.MaxN)
 	}
 	if conf.Window <= 0 {
-		logger.Log.Fatal(
-			"window must be greater than 0",
-			zap.Duration("window", conf.Window),
-		)
+		return nil, fmt.Errorf("window must be greater than 0, got %s", conf.Window)
 	}
 
 	return &SlidingWindowRateLimiter{
 		conf:     conf,
 		lastUsed: time.Now(),
 		events:   make([]time.Time, 0),
-	}
+	}, nil
 }
 
 func (rl *SlidingWindowRateLimiter) IsStale(d time.Duration) bool {

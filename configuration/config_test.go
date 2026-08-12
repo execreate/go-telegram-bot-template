@@ -1,11 +1,17 @@
 package configuration
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestConfigureDefaults(t *testing.T) {
 	// No config.yaml exists in the package directory, so every value here comes from
 	// the defaults set in Configure.
-	config := Configure(nil)
+	config, err := Configure(nil)
+	if err != nil {
+		t.Fatalf("Configure() unexpected error: %v", err)
+	}
 
 	if got := config.GetWebhookListenAddr(); got != "0.0.0.0" {
 		t.Errorf("GetWebhookListenAddr() = %q, want %q", got, "0.0.0.0")
@@ -46,11 +52,51 @@ func TestGetRedisUseSSL(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Setenv("MY_BOT_REDIS_USE_SSL", tt.value)
 
-			if got := Configure(nil).GetRedisUseSSL(); got != tt.want {
+			config, err := Configure(nil)
+			if err != nil {
+				t.Fatalf("Configure() unexpected error: %v", err)
+			}
+
+			if got := config.GetRedisUseSSL(); got != tt.want {
 				t.Errorf("GetRedisUseSSL() with MY_BOT_REDIS_USE_SSL=%q = %v, want %v", tt.value, got, tt.want)
 			}
 		})
 	}
+}
+
+func TestConfigureRequiredVariables(t *testing.T) {
+	t.Run("missing required variable returns an error", func(t *testing.T) {
+		config, err := Configure([]string{"token"})
+
+		if err == nil {
+			t.Fatal("Configure() with an unset required variable returned no error")
+		}
+		if config != nil {
+			t.Error("Configure() returned a config alongside the error")
+		}
+		if !strings.Contains(err.Error(), "token") {
+			t.Errorf("error %q does not name the offending variable", err)
+		}
+	})
+
+	t.Run("the first missing variable is reported", func(t *testing.T) {
+		t.Setenv("MY_BOT_TOKEN", "123:ABC")
+
+		_, err := Configure([]string{"token", "db_dsn"})
+
+		if err == nil {
+			t.Fatal("Configure() with an unset required variable returned no error")
+		}
+		if !strings.Contains(err.Error(), "db_dsn") {
+			t.Errorf("error %q does not name the offending variable", err)
+		}
+	})
+
+	t.Run("variables with defaults satisfy the check", func(t *testing.T) {
+		if _, err := Configure([]string{"webhook_port", "webapp_port"}); err != nil {
+			t.Errorf("Configure() unexpected error: %v", err)
+		}
+	})
 }
 
 func TestEnvOverridesAndTrimming(t *testing.T) {
@@ -59,7 +105,10 @@ func TestEnvOverridesAndTrimming(t *testing.T) {
 	t.Setenv("MY_BOT_WEBAPP_DOMAIN", "https://app.example.com/")
 	t.Setenv("MY_BOT_TOKEN", "123:ABC")
 
-	config := Configure([]string{"token"})
+	config, err := Configure([]string{"token"})
+	if err != nil {
+		t.Fatalf("Configure() unexpected error: %v", err)
+	}
 
 	if got := config.GetWebhookListenAddr(); got != "127.0.0.1" {
 		t.Errorf("GetWebhookListenAddr() = %q, want %q", got, "127.0.0.1")

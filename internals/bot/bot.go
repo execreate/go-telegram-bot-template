@@ -3,7 +3,6 @@ package bot
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"time"
 
 	"errors"
@@ -14,6 +13,7 @@ import (
 	"github.com/execreate/go-telegram-bot-template/internals/commands"
 	"github.com/execreate/go-telegram-bot-template/internals/logger"
 	"github.com/execreate/go-telegram-bot-template/internals/users_cache"
+	"github.com/execreate/go-telegram-bot-template/locale"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/zap"
@@ -50,13 +50,33 @@ type MyBot struct {
 	staticContentPath string
 }
 
-func NewBot(config Config) *MyBot {
-	b, err := gotgbot.NewBot(config.GetToken(), &gotgbot.BotOpts{
-		BotClient: newRateLimiterMiddleware(),
-	})
-
+// NewBot builds the bot, its dispatcher, and the database-backed state it needs.
+// Every failure here is returned rather than fatal, so main.go stays the only place
+// that ends the process.
+func NewBot(config Config, supportedLanguages []string) (*MyBot, error) {
+	dbPool, err := pgxpool.New(context.Background(), config.GetDbDSN())
 	if err != nil {
-		logger.Log.Fatal("failed to create new bot", zap.Error(err))
+		return nil, fmt.Errorf("failed to connect to database: %w", err)
+	}
+
+	settings := NewSettings()
+	if err := settings.loadSettings(dbPool); err != nil {
+		dbPool.Close()
+		return nil, err
+	}
+
+	botClient, err := newRateLimiterMiddleware(settings)
+	if err != nil {
+		dbPool.Close()
+		return nil, fmt.Errorf("failed to create the rate limiting bot client: %w", err)
+	}
+
+	b, err := gotgbot.NewBot(config.GetToken(), &gotgbot.BotOpts{
+		BotClient: botClient,
+	})
+	if err != nil {
+		dbPool.Close()
+		return nil, fmt.Errorf("failed to create new bot: %w", err)
 	}
 
 	// Create updater and dispatcher.
@@ -71,95 +91,12 @@ func NewBot(config Config) *MyBot {
 	})
 	updater := ext.NewUpdater(dispatcher, &ext.UpdaterOpts{Logger: logger.Slog})
 
-	dbPool, err := pgxpool.New(context.Background(), config.GetDbDSN())
-	if err != nil {
-		logger.Log.Fatal("failed to connect to database", zap.Error(err))
-	}
-
 	usersCache := users_cache.NewTgUsersCache(dbPool, 4*time.Hour, 4*24*time.Hour)
-	settings := &Settings{}
 
-	if rows, err := dbPool.Query(
-		context.Background(),
-		//language=SQL
-		"select key, value from configs where deleted_at is null",
-	); err == nil {
-		confItems, err := pgx.CollectRows(rows, pgx.RowToStructByNameLax[tables.Config])
-		if err != nil {
-			logger.Log.Fatal("failed to collect config items from returned rows", zap.Error(err))
-		}
-
-		if confItems != nil {
-			for _, item := range confItems {
-				switch item.Key {
-				case tables.MyChannelID:
-					if i, err := strconv.ParseInt(item.Value, 10, 64); err == nil {
-						settings.SetMyChannelID(i)
-					} else {
-						logger.Log.Fatal(
-							"failed to convert value to integer",
-							zap.Error(err),
-							zap.String("value", item.Value),
-						)
-					}
-				case tables.MyGroupID:
-					if i, err := strconv.ParseInt(item.Value, 10, 64); err == nil {
-						settings.SetMyGroupID(i)
-					} else {
-						logger.Log.Fatal(
-							"failed to convert value to integer",
-							zap.Error(err),
-							zap.String("value", item.Value),
-						)
-					}
-				}
-			}
-		}
-	} else {
-		if !errors.Is(err, pgx.ErrNoRows) {
-			logger.Log.Fatal("failed to get config items from database", zap.Error(err))
-		}
-	}
-
-	if rows, err := dbPool.Query(
-		context.Background(),
-		//language=SQL
-		`select id,
-       		is_admin,
-       		language_code
-		from telegram_users
-        where deleted_at is null and is_admin`,
-	); err == nil {
-		specialUsers, err := pgx.CollectRows(rows, pgx.RowToAddrOfStructByNameLax[tables.TelegramUser])
-		if err != nil {
-			logger.Log.Fatal(
-				"failed to collect telegram users from returned rows",
-				zap.Error(err),
-			)
-		}
-
-		commandsList, err := commands.GetCommands(specialUsers)
-		if err != nil {
-			logger.Log.Fatal("failed to build bot commands", zap.Error(err))
-		}
-
-		ticker := time.NewTicker(time.Millisecond * 50)
-		defer ticker.Stop()
-		for _, val := range commandsList {
-			<-ticker.C
-			if success, err := b.SetMyCommands(val.Commands, val.Opts); err != nil || !success {
-				logger.Log.Fatal(
-					"failed to set commands",
-					zap.Error(err),
-				)
-			}
-		}
-	} else {
-		if !errors.Is(err, pgx.ErrNoRows) {
-			logger.Log.Fatal(
-				"failed to get users from database",
-				zap.Error(err),
-			)
+	for _, language := range supportedLanguages {
+		if err := publishCommands(b, dbPool, language); err != nil {
+			dbPool.Close()
+			return nil, err
 		}
 	}
 
@@ -180,7 +117,54 @@ func NewBot(config Config) *MyBot {
 		webhookSecret:     config.GetWebhookSecret(),
 		webAppPort:        config.GetWebAppPort(),
 		staticContentPath: config.GetStaticContentPath(),
+	}, nil
+}
+
+// publishCommands pushes the command list to Telegram: the general set for all private
+// chats, plus a per-admin set scoped to that admin's chat.
+func publishCommands(b *gotgbot.Bot, dbPool *pgxpool.Pool, language string) error {
+	rows, err := dbPool.Query(
+		context.Background(),
+		//language=SQL
+		`select id, is_admin, is_owner, language_code
+		from telegram_users
+        where deleted_at is null and (is_admin or is_owner)`,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil
+		}
+		return fmt.Errorf("failed to get users from database: %w", err)
 	}
+
+	specialUsers, err := pgx.CollectRows(rows, pgx.RowToAddrOfStructByNameLax[tables.TelegramUser])
+	if err != nil {
+		return fmt.Errorf("failed to collect telegram users from returned rows: %w", err)
+	}
+
+	commandsList, err := commands.GetCommands(specialUsers, language)
+	if err != nil {
+		return fmt.Errorf("failed to build bot commands: %w", err)
+	}
+
+	// The calls are spaced out so the burst does not trip Telegram's own rate limits.
+	ticker := time.NewTicker(time.Millisecond * 50)
+	defer ticker.Stop()
+	for _, val := range commandsList {
+		<-ticker.C
+		if language == locale.FallbackLanguage {
+			val.Opts.LanguageCode = ""
+		}
+		success, err := b.SetMyCommands(val.Commands, val.Opts)
+		if err != nil {
+			return fmt.Errorf("failed to set commands: %w", err)
+		}
+		if !success {
+			return errors.New("telegram rejected the command list")
+		}
+	}
+
+	return nil
 }
 
 // AddHandler adds a new handler to the dispatcher
@@ -200,8 +184,8 @@ func (b *MyBot) Bot() *gotgbot.Bot {
 	return b.bot
 }
 
-// Run starts webhook server and blocks with updater.Idle()
-func (b *MyBot) Run() {
+// Run starts the webhook server and registers the webhook with Telegram.
+func (b *MyBot) Run() error {
 	logger.Log.Info("Telegram bot starting")
 
 	webhookOpts := ext.WebhookOpts{
@@ -210,22 +194,21 @@ func (b *MyBot) Run() {
 	}
 	// Start the server before we set the webhook itself, so that when telegram starts
 	// sending updates, the server is already ready.
-	err := b.updater.StartWebhook(b.bot, b.webhookPath, webhookOpts)
-	if err != nil {
-		logger.Log.Fatal("failed to start webhook", zap.Error(err))
+	if err := b.updater.StartWebhook(b.bot, b.webhookPath, webhookOpts); err != nil {
+		return fmt.Errorf("failed to start webhook: %w", err)
 	}
 
 	// set the webhook
-	err = b.updater.SetAllBotWebhooks(b.webhookDomain, &gotgbot.SetWebhookOpts{
+	if err := b.updater.SetAllBotWebhooks(b.webhookDomain, &gotgbot.SetWebhookOpts{
 		MaxConnections:     100,
 		DropPendingUpdates: false,
 		SecretToken:        webhookOpts.SecretToken,
-	})
-	if err != nil {
-		logger.Log.Fatal("failed to set webhook", zap.Error(err))
+	}); err != nil {
+		return fmt.Errorf("failed to set webhook: %w", err)
 	}
 
 	logger.Log.Info("Bot has started", zap.String("username", b.bot.User.Username))
+	return nil
 }
 
 // CleanUp cleans up bot resources

@@ -13,8 +13,8 @@ out of the box.
 - **PostgreSQL integration** — pgxpool connection, Goose migrations, soft deletes
 - **Redis conversation storage** — a `conversation.Storage` implementation for gotgbot conversation handlers
 - **In-memory user cache** — lazy-loaded, auto-synced to DB, auto-cleanup
-- **Localization** — YAML-based i18n; per-user locale from Telegram's `language_code`, with admin-scoped command
-  descriptions
+- **Localization** — YAML-based i18n; per-user locale from Telegram's `language_code`, with per-scope command
+  descriptions published for every supported language
 - **Structured logging** — Zap logger with slog bridge
 - **Graceful shutdown** — grace period for in-flight requests
 - **Docker** — multi-stage, cross-compilable build producing a minimal scratch image; Docker Compose dev stack
@@ -191,12 +191,29 @@ startup, but the connection is only opened when you build a gotgbot conversation
 ## Adding Locales
 
 1. Create `locale/<lang>.yaml` and `locale/<lang>_commands.yaml`.
-2. Point `--locale-path` at the folder if it isn't the default `./locale`.
+2. Add a `static/terms_and_conditions.<lang>.html` page.
+3. Add the language to `supportedLanguages` in `main.go`.
+4. Point `--locale-path` at the folder if it isn't the default `./locale`.
 
 The locale is picked per user from Telegram's `language_code` — `MiscContextHandler` loads the matching texts into
 `ctx.Data["texts"]`, and the WebApp server does the same from the validated initData. A missing locale file falls back to
-`en`. Command descriptions come from `<lang>_commands.yaml`: the `general` key is published to all private chats, and the
-`admin` key is merged in for users flagged `is_admin` in the database.
+`en` (`locale.FallbackLanguage`); `locale.SetPath` overrides the directory at runtime and drops the parsed-locale caches.
+
+Command descriptions come from `<lang>_commands.yaml`, keyed by the scope they are published to. Every language in
+`supportedLanguages` is published on startup, so Telegram serves each user the descriptions matching their
+`language_code`. An empty or absent key is published as an empty list.
+
+| Locale key                | Published to                                                       |
+|---------------------------|--------------------------------------------------------------------|
+| `default`                 | every chat with no more specific scope                             |
+| `all_private_chats`       | all private chats                                                  |
+| `all_group_chats`         | all group chats                                                    |
+| `all_chat_administrators` | administrators of every group chat                                 |
+| `bot_admin`               | the private chat of each user flagged `is_admin` in the database   |
+| `bot_owner`               | the private chat of each user flagged `is_owner` in the database   |
+
+You can also set commands for specific chat members and admins, for details see the
+[commands package](./internals/commands/main.go). 
 
 ## Rate Limiting
 

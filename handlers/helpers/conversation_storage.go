@@ -3,6 +3,7 @@ package helpers
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"time"
 
 	"errors"
@@ -32,9 +33,9 @@ type RedisConversationStorage struct {
 	redisClient *redis.Client
 }
 
-func NewRedisConversationStorage(config RedisConfig, botUsername string) *RedisConversationStorage {
+func NewRedisConversationStorage(config RedisConfig, botUsername string) (*RedisConversationStorage, error) {
 	if cachedStorage != nil {
-		return cachedStorage
+		return cachedStorage, nil
 	}
 
 	var redisTlsConfig *tls.Config
@@ -55,17 +56,20 @@ func NewRedisConversationStorage(config RedisConfig, botUsername string) *RedisC
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
-	if res, err := conn.Ping(ctx).Result(); err != nil {
-		logger.Log.Fatal("failed to ping redis", zap.Error(err))
-	} else {
-		logger.Log.Info("redis connection success", zap.String("redis_response", res))
+	res, err := conn.Ping(ctx).Result()
+	if err != nil {
+		if closeErr := conn.Close(); closeErr != nil {
+			logger.Log.Warn("failed to close the redis client", zap.Error(closeErr))
+		}
+		return nil, fmt.Errorf("failed to ping redis: %w", err)
 	}
+	logger.Log.Info("redis connection success", zap.String("redis_response", res))
 
 	cachedStorage = &RedisConversationStorage{
 		redisClient: conn,
 	}
 
-	return cachedStorage
+	return cachedStorage, nil
 }
 
 // Get returns the state for the specified conversation key.

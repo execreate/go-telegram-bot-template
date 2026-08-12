@@ -1,6 +1,7 @@
 package configuration
 
 import (
+	"fmt"
 	"os"
 	"strings"
 
@@ -14,7 +15,9 @@ type Configuration struct {
 	*viper.Viper
 }
 
-func Configure(requiredConfigVariables []string) *Configuration {
+// Configure loads the configuration from config.yaml and the MY_BOT_* environment
+// variables, and verifies that every required variable resolves to a non-empty value.
+func Configure(requiredConfigVariables []string) (*Configuration, error) {
 	// configure viper
 	config := &Configuration{viper.New()}
 	config.SetEnvPrefix("my_bot")  // will be upper-cased automatically
@@ -33,20 +36,22 @@ func Configure(requiredConfigVariables []string) *Configuration {
 	config.SetDefault("webhook_port", 8080)
 	config.SetDefault("webapp_port", 8081)
 	config.SetDefault("terms_and_conditions_version", "v1.0.0")
-	checkRequiredConfigVariables(config, requiredConfigVariables)
-	return config
+
+	if err := checkRequiredConfigVariables(config, requiredConfigVariables); err != nil {
+		return nil, err
+	}
+
+	return config, nil
 }
 
-func checkRequiredConfigVariables(config *Configuration, requiredConfigVariables []string) {
+func checkRequiredConfigVariables(config *Configuration, requiredConfigVariables []string) error {
 	for _, variableName := range requiredConfigVariables {
 		// Check the config variable is set.
 		if config.GetString(variableName) == "" {
-			logger.Log.Fatal(
-				"required configuration variable is empty",
-				zap.String("config_var_name", variableName),
-			)
+			return fmt.Errorf("required configuration variable %q is empty", variableName)
 		}
 	}
+	return nil
 }
 
 // GetToken returns bots secret token
