@@ -29,6 +29,7 @@ func Configure(requiredConfigVariables []string) *Configuration {
 			zap.Error(err),
 		)
 	}
+	config.SetDefault("webhook_listen_addr", "0.0.0.0")
 	config.SetDefault("webhook_port", 8080)
 	config.SetDefault("webapp_port", 8081)
 	config.SetDefault("terms_and_conditions_version", "v1.0.0")
@@ -68,6 +69,13 @@ func (config *Configuration) GetWebhookDomain() string {
 func (config *Configuration) GetWebhookPath() string {
 	webhookPath := config.GetToken() + "/webhook"
 	return webhookPath
+}
+
+// GetWebhookListenAddr returns the interface the webhook server binds to. It defaults
+// to 0.0.0.0 so the published port is reachable from outside a container; set it to
+// 127.0.0.1 when a reverse proxy on the same host is the only client.
+func (config *Configuration) GetWebhookListenAddr() string {
+	return config.GetString("webhook_listen_addr")
 }
 
 // GetWebhookPort returns the webhook port
@@ -117,8 +125,10 @@ func (config *Configuration) GetRedisPassword() string {
 	return config.GetString("redis_pass")
 }
 
+// GetRedisUseSSL returns true if the Redis connection should use TLS. Set via the
+// "redis_use_ssl" config key or the MY_BOT_REDIS_USE_SSL environment variable.
 func (config *Configuration) GetRedisUseSSL() bool {
-	return config.GetString("redis_use_ssl") != ""
+	return config.GetBool("redis_use_ssl")
 }
 
 // GetDebug returns true if the app is running in debug mode. Set via the "debug"

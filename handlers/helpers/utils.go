@@ -9,10 +9,14 @@ import (
 	"github.com/PaulSonOfLars/gotgbot/v2/ext"
 )
 
+// ContainsMessageViaBot reports whether ctx holds an original (not forwarded) message
+// with the exact text msg, sent inline via the bot botUsername.
 func ContainsMessageViaBot(msg, botUsername string, ctx *ext.Context) bool {
+	// ForwardOrigin is an interface and is nil unless the message was forwarded, so it
+	// must be compared rather than called through.
 	return ctx.EffectiveMessage != nil &&
 		ctx.EffectiveMessage.Text == msg &&
-		ctx.EffectiveMessage.ForwardOrigin.GetDate() == 0 &&
+		ctx.EffectiveMessage.ForwardOrigin == nil &&
 		ctx.EffectiveMessage.ViaBot != nil &&
 		ctx.EffectiveMessage.ViaBot.Username == botUsername
 }
@@ -43,26 +47,32 @@ func GetUserMention(user *tables.TelegramUser) string {
 	return fmt.Sprintf("@%s", user.Username.String)
 }
 
+// escapeMarkdownV2 escapes every character Telegram treats as special in MarkdownV2.
+// The backslash pair must come first: strings.NewReplacer matches in argument order,
+// so any later pair would otherwise have its own backslash escaped again.
+var escapeMarkdownV2 = strings.NewReplacer(
+	"\\", "\\\\",
+	"_", "\\_",
+	"*", "\\*",
+	"[", "\\[",
+	"]", "\\]",
+	"(", "\\(",
+	")", "\\)",
+	"~", "\\~",
+	"`", "\\`",
+	">", "\\>",
+	"#", "\\#",
+	"+", "\\+",
+	"-", "\\-",
+	"=", "\\=",
+	"|", "\\|",
+	"{", "\\{",
+	"}", "\\}",
+	".", "\\.",
+	"!", "\\!",
+)
+
+// EscapeMarkdownChars escapes text for safe interpolation into a MarkdownV2 message.
 func EscapeMarkdownChars(text string) string {
-	replacer := strings.NewReplacer(
-		"_", "\\_",
-		"*", "\\*",
-		"[", "\\[",
-		"]", "\\]",
-		"(", "\\(",
-		")", "\\)",
-		"~", "\\~",
-		"`", "\\`",
-		">", "\\>",
-		"#", "\\#",
-		"+", "\\+",
-		"-", "\\-",
-		"=", "\\=",
-		"|", "\\|",
-		"{", "\\{",
-		"}", "\\}",
-		".", "\\.",
-		"!", "\\!",
-	)
-	return replacer.Replace(text)
+	return escapeMarkdownV2.Replace(text)
 }

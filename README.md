@@ -115,6 +115,7 @@ uppercased automatically). Environment variables take precedence over the config
 |--------------------------------|---------------------------------------|----------|---------------------------------------------------------|
 | `token`                        | `MY_BOT_TOKEN`                        | yes      | Telegram Bot API token                                  |
 | `webhook_domain`               | `MY_BOT_WEBHOOK_DOMAIN`               | yes      | Public HTTPS domain for the webhook                     |
+| `webhook_listen_addr`          | `MY_BOT_WEBHOOK_LISTEN_ADDR`          | no       | Interface the webhook server binds to (default: `0.0.0.0`) |
 | `webhook_port`                 | `MY_BOT_WEBHOOK_PORT`                 | yes      | Port to listen on (default: `8080`)                     |
 | `webhook_secret`               | `MY_BOT_WEBHOOK_SECRET`               | yes      | Secret for validating webhook requests                  |
 | `webapp_domain`                | `MY_BOT_WEBAPP_DOMAIN`                | yes      | Public HTTPS domain for the WebApp                      |
@@ -124,7 +125,7 @@ uppercased automatically). Environment variables take precedence over the config
 | `redis_addr`                   | `MY_BOT_REDIS_ADDR`                   | yes      | Redis address (e.g. `localhost:6375`)                   |
 | `redis_user`                   | `MY_BOT_REDIS_USER`                   | yes      | Redis username                                          |
 | `redis_pass`                   | `MY_BOT_REDIS_PASS`                   | yes      | Redis password                                          |
-| `redis_use_ssl`                | `MY_BOT_REDIS_USE_SSL`                | no       | Any non-empty value connects to Redis over TLS 1.2+     |
+| `redis_use_ssl`                | `MY_BOT_REDIS_USE_SSL`                | no       | `true` connects to Redis over TLS 1.2+ (default: `false`) |
 | `terms_and_conditions_version` | `MY_BOT_TERMS_AND_CONDITIONS_VERSION` | no       | Version users must accept (default: `v1.0.0`)           |
 | `debug`                        | `MY_BOT_DEBUG`                        | no       | `true` for a verbose console logger; JSON logs otherwise |
 
@@ -162,6 +163,10 @@ docker build -t my-telegram-bot .
 The multi-stage build produces a minimal image based on `scratch` (~5 MB) containing only the compiled binary, CA
 certificates, locale files, and static assets. The image bakes in `MY_BOT_STATIC_CONTENT_PATH=/app/static` and starts the
 binary with `--locale-path /app/locale`, so only the remaining config keys need to be supplied at runtime.
+
+The webhook server binds `webhook_listen_addr` (default `0.0.0.0`), so a published port reaches it from outside the
+container. Set it to `127.0.0.1` only if the sole client is a reverse proxy in the same network namespace — otherwise
+Telegram cannot deliver updates.
 
 Cross-compilation is wired up via BuildKit's `TARGETOS`/`TARGETARCH`:
 

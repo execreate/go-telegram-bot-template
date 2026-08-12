@@ -1,6 +1,7 @@
 token: "YOUR_BOT_TOKEN"
 terms_and_conditions_version: "v1.0.0"
 webhook_domain: "YOUR_WEBHOOK_DOMAIN"
+webhook_listen_addr: "0.0.0.0"
 webhook_port: "8080"
 webhook_secret: "YOUR_BOT_WEBHOOK_SECRET"
 webapp_domain: "YOUR_WEBAPP_DOMAIN"
@@ -10,3 +11,4 @@ static_content_path: "./static"
 redis_addr: "localhost:6375"
 redis_user: "default"
 redis_pass: "password"
+redis_use_ssl: false

@@ -23,6 +23,7 @@ type Config interface {
 	GetToken() string
 	GetWebhookDomain() string
 	GetWebhookPath() string
+	GetWebhookListenAddr() string
 	GetWebhookPort() int
 	GetWebhookSecret() string
 	GetWebAppPort() int
@@ -42,6 +43,7 @@ type MyBot struct {
 	token             string
 	webhookDomain     string
 	webhookPath       string
+	webhookListenAddr string
 	webhookPort       int
 	webhookSecret     string
 	webAppPort        int
@@ -173,6 +175,7 @@ func NewBot(config Config) *MyBot {
 		token:             config.GetToken(),
 		webhookDomain:     config.GetWebhookDomain(),
 		webhookPath:       config.GetWebhookPath(),
+		webhookListenAddr: config.GetWebhookListenAddr(),
 		webhookPort:       config.GetWebhookPort(),
 		webhookSecret:     config.GetWebhookSecret(),
 		webAppPort:        config.GetWebAppPort(),
@@ -202,7 +205,7 @@ func (b *MyBot) Run() {
 	logger.Log.Info("Telegram bot starting")
 
 	webhookOpts := ext.WebhookOpts{
-		ListenAddr:  fmt.Sprintf("localhost:%d", b.webhookPort),
+		ListenAddr:  fmt.Sprintf("%s:%d", b.webhookListenAddr, b.webhookPort),
 		SecretToken: b.webhookSecret,
 	}
 	// Start the server before we set the webhook itself, so that when telegram starts

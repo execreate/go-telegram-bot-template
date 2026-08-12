@@ -67,15 +67,9 @@ func (tgUsrPool *TgUsersCache) GetByUsername(username string) (*tables.TelegramU
 		return nil, err
 	}
 
-	tgUsrPool.mu.RLock()
-	_, exists := tgUsrPool.users[telegramUser.ID]
-	tgUsrPool.mu.RUnlock()
-	if !exists {
-		go tgUsrPool.addNewUser(
-			telegramUser.ID,
-			user_container.NewTelegramUserContainer(&telegramUser),
-		)
-	}
+	// Populate the cache before returning: the caller can then rely on the user being
+	// cached, which UserHasAcceptedTermsAndConditions requires.
+	tgUsrPool.cacheUser(telegramUser.ID, user_container.NewTelegramUserContainer(&telegramUser))
 
 	// Return a copy so the caller never shares the pointer stored in the container.
 	result := telegramUser
@@ -114,15 +108,8 @@ func (tgUsrPool *TgUsersCache) GetByID(userID int64) (*tables.TelegramUser, erro
 		return nil, err
 	}
 
-	tgUsrPool.mu.RLock()
-	_, exists := tgUsrPool.users[telegramUser.ID]
-	tgUsrPool.mu.RUnlock()
-	if !exists {
-		go tgUsrPool.addNewUser(
-			telegramUser.ID,
-			user_container.NewTelegramUserContainer(&telegramUser),
-		)
-	}
+	// See GetByUsername: the entry has to be in place before this returns.
+	tgUsrPool.cacheUser(telegramUser.ID, user_container.NewTelegramUserContainer(&telegramUser))
 
 	// Return a copy so the caller never shares the pointer stored in the container.
 	result := telegramUser
@@ -254,10 +241,8 @@ func (tgUsrPool *TgUsersCache) Get(effectiveUser *gotgbot.User) (*tables.Telegra
 		}
 	}
 
-	go tgUsrPool.addNewUser(
-		telegramUser.ID,
-		user_container.NewTelegramUserContainer(&telegramUser),
-	)
+	// See GetByUsername: the entry has to be in place before this returns.
+	tgUsrPool.cacheUser(telegramUser.ID, user_container.NewTelegramUserContainer(&telegramUser))
 
 	// Return a copy so the caller never shares the pointer stored in the container.
 	result := telegramUser
@@ -298,11 +283,23 @@ func (tgUsrPool *TgUsersCache) UserHasAcceptedTermsAndConditions(userID int64, v
 	return nil
 }
 
-func (tgUsrPool *TgUsersCache) addNewUser(userID int64, user *user_container.TgUserContainer) {
+// cacheUser stores the container under userID unless that user is already cached, and
+// returns whichever container is in the cache afterwards. Checking and inserting under a
+// single write lock keeps two concurrent misses for the same user from overwriting a
+// fresher entry with an older snapshot.
+func (tgUsrPool *TgUsersCache) cacheUser(
+	userID int64,
+	user *user_container.TgUserContainer,
+) *user_container.TgUserContainer {
 	tgUsrPool.mu.Lock()
 	defer tgUsrPool.mu.Unlock()
 
+	if cached, ok := tgUsrPool.users[userID]; ok {
+		return cached
+	}
+
 	tgUsrPool.users[userID] = user
+	return user
 }
 
 func (tgUsrPool *TgUsersCache) cleanUpRoutine(interval time.Duration) {

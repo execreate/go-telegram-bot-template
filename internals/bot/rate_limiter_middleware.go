@@ -3,6 +3,8 @@ package bot
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -13,6 +15,31 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/time/rate"
 )
+
+// errUnsupportedChatIDType is returned when chat_id carries a type the middleware
+// cannot turn into a chat ID. Callers treat it as "cannot rate limit this request"
+// rather than as a request failure.
+var errUnsupportedChatIDType = errors.New("unsupported chat_id type")
+
+// parseChatID resolves the chat_id request parameter to an int64. gotgbot stringifies
+// params before they reach the middleware chain, but the parameter is typed as any —
+// the numeric cases keep rate limiting working if that ever changes.
+func parseChatID(value any) (int64, error) {
+	switch v := value.(type) {
+	case string:
+		return strconv.ParseInt(v, 10, 64)
+	case json.Number:
+		return v.Int64()
+	case int64:
+		return v, nil
+	case int:
+		return int64(v), nil
+	case int32:
+		return int64(v), nil
+	default:
+		return 0, fmt.Errorf("%w: %T", errUnsupportedChatIDType, value)
+	}
+}
 
 // rateLimitingBotClient middleware wraps the existing BotClient to add a new behavior.
 type rateLimitingBotClient struct {
@@ -41,22 +68,29 @@ func (b *rateLimitingBotClient) RequestWithContext(
 ) (json.RawMessage, error) {
 	// if we are interacting with a specific chat_id, we wait for the chat rate limiter.
 	if maybeChatID, ok := params["chat_id"]; ok {
-		if chatID, ok := maybeChatID.(string); ok {
-			chatIDInt64, err := strconv.ParseInt(chatID, 10, 64)
-			if err != nil {
-				logger.Log.Error("failed to convert chatID to int64", zap.Error(err))
+		chatIDInt64, err := parseChatID(maybeChatID)
+		switch {
+		case errors.Is(err, errUnsupportedChatIDType):
+			// Rate limiting is skipped rather than failing the request, but it must not
+			// be skipped silently — that would hide the middleware doing nothing.
+			logger.Log.Warn(
+				"chat_id has an unexpected type, sending the request without rate limiting",
+				zap.String("method", method),
+				zap.Any("chat_id", maybeChatID),
+				zap.Error(err),
+			)
+		case err != nil:
+			logger.Log.Error("failed to convert chatID to int64", zap.Error(err))
+			return nil, err
+		case GroupChats.IsGroupChat(chatIDInt64):
+			if err := b.groupChatLimiters.WaitLimiter(ctx, chatIDInt64); err != nil {
+				logger.Log.Error("failed to wait for group chat rate limiter", zap.Error(err))
 				return nil, err
 			}
-			if GroupChats.IsGroupChat(chatIDInt64) {
-				if err := b.groupChatLimiters.WaitLimiter(ctx, chatIDInt64); err != nil {
-					logger.Log.Error("failed to wait for group chat rate limiter", zap.Error(err))
-					return nil, err
-				}
-			} else {
-				if err := b.privateChatLimiters.WaitLimiter(ctx, chatIDInt64); err != nil {
-					logger.Log.Error("failed to wait for private chat rate limiter", zap.Error(err))
-					return nil, err
-				}
+		default:
+			if err := b.privateChatLimiters.WaitLimiter(ctx, chatIDInt64); err != nil {
+				logger.Log.Error("failed to wait for private chat rate limiter", zap.Error(err))
+				return nil, err
 			}
 		}
 	}

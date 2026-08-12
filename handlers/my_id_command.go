@@ -5,6 +5,7 @@ import (
 
 	"github.com/PaulSonOfLars/gotgbot/v2"
 	"github.com/PaulSonOfLars/gotgbot/v2/ext"
+	"github.com/execreate/go-telegram-bot-template/handlers/helpers"
 	"github.com/execreate/go-telegram-bot-template/internals/logger"
 	"go.uber.org/zap"
 )
@@ -34,10 +35,12 @@ func MyID(b *gotgbot.Bot, ctx *ext.Context) error {
 		}
 	}
 
+	// The title is user-controlled, so it has to be escaped or Telegram rejects the
+	// whole MarkdownV2 message with a 400.
 	txt := fmt.Sprintf(
 		"User ID: `%d`\n\nChat Title: %s\nChat ID: `%d`\nChat Type: `%s`\n\nLinked Chat ID: `%d`",
 		userID,
-		chatTitle,
+		helpers.EscapeMarkdownChars(chatTitle),
 		chatID,
 		chatType,
 		linkedChatID,

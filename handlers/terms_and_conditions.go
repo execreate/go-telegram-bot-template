@@ -44,7 +44,13 @@ func (handler *TermsAndConditionsHandler) CheckUpdate(_ *gotgbot.Bot, ctx *ext.C
 	if ctx.EffectiveUser == nil {
 		return false
 	}
-	user := ctx.Data["db_user"].(*tables.TelegramUser)
+	// UserContextHandler at group -1 populates db_user, but a fork that registers a
+	// handler at group -1 or lower, or reorders the groups, may reach this first. Skip
+	// the update instead of panicking in the dispatcher.
+	user, ok := ctx.Data["db_user"].(*tables.TelegramUser)
+	if !ok {
+		return false
+	}
 	return ctx.EffectiveChat != nil && ctx.EffectiveChat.Type == "private" && user.MustAcceptTermsAndConditions(handler.version)
 }
 
