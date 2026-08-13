@@ -47,9 +47,7 @@ func NewTgUsersCache(dbPool Querier, cleanUpInterval, staleThreshold time.Durati
 }
 
 func (tgUsrPool *TgUsersCache) GetByUsername(username string) (*tables.TelegramUser, error) {
-	if strings.HasPrefix(username, "@") {
-		username = username[1:]
-	}
+	username = strings.TrimPrefix(username, "@")
 
 	// This lookup always goes to the DB; no lock is held for the query.
 	rows, _ := tgUsrPool.dbPool.Query(

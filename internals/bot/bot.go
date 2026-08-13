@@ -207,7 +207,7 @@ func (b *MyBot) Run() error {
 		return fmt.Errorf("failed to set webhook: %w", err)
 	}
 
-	logger.Log.Info("Bot has started", zap.String("username", b.bot.User.Username))
+	logger.Log.Info("Bot has started", zap.String("username", b.bot.Username))
 	return nil
 }
 
@@ -230,5 +230,5 @@ func (b *MyBot) CleanUp(shutDownPeriod time.Duration) {
 
 // GetUsername returns the bot username
 func (b *MyBot) GetUsername() string {
-	return b.bot.User.Username
+	return b.bot.Username
 }

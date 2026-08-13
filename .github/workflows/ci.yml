@@ -1,0 +1,147 @@
+name: CI
+
+# Every action below is pinned to a full-length commit SHA (tags are mutable and can be
+# repointed at malicious code). The trailing comment records the tag the SHA came from;
+# Dependabot (.github/dependabot.yml) keeps both in sync.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    # `labeled` is included so that adding the `integration` label to an open PR
+    # re-runs the workflow and picks up the now-enabled integration job.
+    types: [opened, synchronize, reopened, labeled]
+  workflow_dispatch:
+
+# Least privilege: read-only by default, no job here needs anything more.
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # Superseded pull-request runs are cancelled; runs on main always finish so the
+  # branch keeps an uninterrupted, complete history of CI results.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: Build, vet and gofmt
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          # Single source of truth for the Go version: the `go` directive in go.mod.
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: go build
+        run: go build ./...
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go vet (integration build tag)
+        # The integration-tagged test files are excluded from every other build, so
+        # without this step they could stop compiling without anyone noticing.
+        run: go vet -tags=integration ./...
+
+      - name: gofmt
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "::error::gofmt reported unformatted files; run 'gofmt -w .'"
+            echo "$unformatted"
+            exit 1
+          fi
+          echo "gofmt: all files formatted"
+
+  test:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: go test
+        # -count=1 defeats the test result cache so this always exercises the code.
+        run: go test ./... -race -count=1 -coverprofile=coverage.out
+
+      - name: Upload coverage profile
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-profile
+          path: coverage.out
+          if-no-files-found: error
+          retention-days: 14
+
+  integration:
+    name: Integration tests
+    # Slower than the rest of CI because it starts a throwaway PostgreSQL container,
+    # so it is opt-in on pull requests: add the `integration` label to run it.
+    # Pushes to main and manual runs always run it.
+    if: >-
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' ||
+      contains(github.event.pull_request.labels.*.name, 'integration')
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: go test (integration)
+        # No `services:` block on purpose: the suite uses testcontainers-go, which
+        # starts its own postgres:17-alpine container and runs the goose migrations
+        # against it. All it needs is the Docker daemon that ubuntu runners ship with.
+        run: go test -tags=integration ./... -race -count=1
+
+  lint:
+    name: golangci-lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          # Pinned rather than `latest` so a new release cannot turn a green PR red.
+          # Must stay a v2.x release: .golangci.yml uses the v2 config schema.
+          version: v2.12.2

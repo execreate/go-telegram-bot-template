@@ -8,7 +8,7 @@ import (
 	"github.com/execreate/go-telegram-bot-template/locale"
 )
 
-var userCommandsNotFound = errors.New("commands for this user not found")
+var errUserCommandsNotFound = errors.New("commands for this user not found")
 
 func GetUserCommands(usr *tables.TelegramUser) ([]gotgbot.BotCommand, error) {
 	commands, err := locale.GetCmdTranslations(usr.LanguageCode)
@@ -23,7 +23,7 @@ func GetUserCommands(usr *tables.TelegramUser) ([]gotgbot.BotCommand, error) {
 	} else if usr.IsOwner {
 		usrCommands = commands.GetStringMapString(commandScopeKeys[commandScopeBotOwner])
 	} else {
-		return nil, userCommandsNotFound
+		return nil, errUserCommandsNotFound
 	}
 
 	return getCommandsSlice(usrCommands), nil

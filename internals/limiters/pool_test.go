@@ -221,10 +221,7 @@ func TestRateLimiterPoolDoesNotHoldTheLockWhileWaiting(t *testing.T) {
 	// Another chat must not be stuck behind the blocked one. Poll rather than sleep:
 	// the goroutine above may not have reached Wait yet.
 	deadline := time.Now().Add(5 * time.Second)
-	for {
-		if blocked.waits.Load() > 0 {
-			break
-		}
+	for blocked.waits.Load() == 0 {
 		if time.Now().After(deadline) {
 			t.Fatal("the first caller never reached Wait")
 		}

@@ -301,8 +301,8 @@ func TestGetUserCommands(t *testing.T) {
 				if err == nil {
 					t.Fatalf("GetUserCommands() = %v, want an error", cmds)
 				}
-				if !errors.Is(err, userCommandsNotFound) {
-					t.Errorf("GetUserCommands() error = %v, want userCommandsNotFound", err)
+				if !errors.Is(err, errUserCommandsNotFound) {
+					t.Errorf("GetUserCommands() error = %v, want errUserCommandsNotFound", err)
 				}
 				return
 			}

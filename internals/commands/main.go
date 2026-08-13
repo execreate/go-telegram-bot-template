@@ -46,7 +46,7 @@ func getCommandSettings(
 	scope gotgbot.BotCommandScope,
 	language string,
 ) Settings {
-	if commands == nil || len(commands) == 0 {
+	if len(commands) == 0 {
 		return Settings{
 			Commands: make([]gotgbot.BotCommand, 0),
 			Opts: &gotgbot.SetMyCommandsOpts{

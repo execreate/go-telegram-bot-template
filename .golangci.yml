@@ -1,0 +1,30 @@
+# golangci-lint configuration (schema v2 — see https://golangci-lint.run/docs/configuration/file/).
+# Run locally with: golangci-lint run
+version: "2"
+
+run:
+  timeout: 5m
+  # Lint the `integration` build-tagged files too; they are otherwise never analysed.
+  build-tags:
+    - integration
+
+linters:
+  # The standard set: errcheck, govet, ineffassign, staticcheck, unused. errcheck
+  # and govet/nilness are the two that have caught real bugs in this template
+  # (unchecked errors, and a deref after a nil check).
+  default: standard
+  settings:
+    govet:
+      enable:
+        - nilness
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+
+formatters:
+  enable:
+    - gofmt

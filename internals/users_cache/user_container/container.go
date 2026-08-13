@@ -26,11 +26,7 @@ func (tgUser *TgUserContainer) IsStale(threshold time.Duration) bool {
 	tgUser.mu.RLock()
 	defer tgUser.mu.RUnlock()
 
-	if time.Now().Sub(tgUser.lastActivity) > threshold {
-		return true
-	}
-
-	return false
+	return time.Since(tgUser.lastActivity) > threshold
 }
 
 // GetRaw returns a copy of the cached user. A copy (rather than the live pointer)

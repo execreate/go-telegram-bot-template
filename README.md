@@ -154,6 +154,19 @@ goose -dir ./database/migrations/postgres postgres "<DSN>" down
 
 ## Testing
 
+The `Makefile` wraps everything CI runs, so a failure can be reproduced without pushing:
+
+| Target                  | What it runs                                                          |
+|-------------------------|-----------------------------------------------------------------------|
+| `make verify`           | `go build`, `go vet` (with and without the `integration` tag), `gofmt` |
+| `make test`             | the unit suite, race detector on                                      |
+| `make test-integration` | the database-backed suite                                             |
+| `make lint`             | golangci-lint                                                          |
+| `make lint-fix`         | golangci-lint with `--fix`                                            |
+| `make tools`            | install golangci-lint at the pinned version                           |
+
+The underlying commands are spelled out below if you would rather run them directly.
+
 ```shell
 go test ./... -race
 ```
@@ -186,6 +199,28 @@ export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock
 
 `testcontainers-go` and `goose` are pulled in only by tagged test files, but Go has no test-only dependency scope, so
 they appear in `go.mod` like any other requirement.
+
+### CI
+
+`.github/workflows/ci.yml` runs four jobs. `build` (`go build`, `go vet` with and without the `integration` tag, and a
+`gofmt` check), `test`, and `lint` (golangci-lint) run on every pull request. `integration` is slower, so it runs on
+pushes to `main` and on pull requests **only when the PR is labelled `integration`** — add the label to an open PR and
+the workflow re-runs with it enabled. Because that job is skipped on unlabelled PRs, do not mark it as a required status
+check in branch protection; those PRs would never satisfy it.
+
+### Linting
+
+`.golangci.yml` runs golangci-lint's standard set — `errcheck`, `govet` (with the `nilness` analyser), `ineffassign`,
+`staticcheck` and `unused` — over both the normal build and the `integration`-tagged files.
+
+```shell
+make tools   # installs the pinned version into $(go env GOPATH)/bin
+make lint
+```
+
+The config uses the **v2 schema**, so a golangci-lint v1 binary will reject it. `make tools` installs the same version
+CI pins (`GOLANGCI_LINT_VERSION` in the `Makefile` must match `version:` in the workflow — Dependabot updates the action
+but not the `Makefile`). `brew install golangci-lint` gives you the latest release instead, which may drift from the pin.
 
 ## Docker
 
