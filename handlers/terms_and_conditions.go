@@ -17,8 +17,19 @@ import (
 	"go.uber.org/zap"
 )
 
+// termsAcceptor records a user's acceptance. *users_cache.TgUsersCache satisfies it;
+// depending on the method rather than the whole cache keeps this handler testable
+// without a database.
+type termsAcceptor interface {
+	UserHasAcceptedTermsAndConditions(userID int64, version string) error
+}
+
 type TermsAndConditionsHandler struct {
-	bot                *bot.MyBot
+	// users and sender are the only parts of the bot this handler needs. They are
+	// pulled out at construction so the handler does not carry the whole MyBot.
+	users  termsAcceptor
+	sender *gotgbot.Bot
+
 	htmlFilename       string
 	version            string
 	supportedLanguages []string
@@ -31,7 +42,8 @@ func NewTermsAndConditionsHandler(
 	version string,
 ) (*TermsAndConditionsHandler, error) {
 	termsHandler := &TermsAndConditionsHandler{
-		bot:                bot,
+		users:              bot.UsersCache,
+		sender:             bot.Bot(),
 		htmlFilename:       "terms_and_conditions",
 		version:            version,
 		supportedLanguages: supportedLanguages,
@@ -122,7 +134,7 @@ func (handler *TermsAndConditionsHandler) handleAcceptTermsAndConditions(
 	webAppUser *gin_server.TgWebAppUser,
 	texts *viper.Viper,
 ) {
-	if err := handler.bot.UsersCache.UserHasAcceptedTermsAndConditions(
+	if err := handler.users.UserHasAcceptedTermsAndConditions(
 		webAppUser.ID,
 		handler.version,
 	); err != nil {
@@ -131,7 +143,7 @@ func (handler *TermsAndConditionsHandler) handleAcceptTermsAndConditions(
 			zap.Int64("user_id", webAppUser.ID),
 			zap.Error(err),
 		)
-		_, err = handler.bot.Bot().SendMessage(webAppUser.ID, texts.GetString("terms_and_conditions.failed_to_accept"), nil)
+		_, err = handler.sender.SendMessage(webAppUser.ID, texts.GetString("terms_and_conditions.failed_to_accept"), nil)
 		if err != nil {
 			logger.Log.Error(
 				"failed to send message to user",
@@ -140,7 +152,7 @@ func (handler *TermsAndConditionsHandler) handleAcceptTermsAndConditions(
 			)
 		}
 	} else {
-		_, err := handler.bot.Bot().SendMessage(webAppUser.ID, texts.GetString("terms_and_conditions.accepted"), nil)
+		_, err := handler.sender.SendMessage(webAppUser.ID, texts.GetString("terms_and_conditions.accepted"), nil)
 		if err != nil {
 			logger.Log.Error(
 				"failed to send message to user",

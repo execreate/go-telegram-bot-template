@@ -3,6 +3,7 @@ package users_cache
 import (
 	"database/sql"
 	"errors"
+	"github.com/jackc/pgx/v5"
 	"strings"
 	"sync"
 	"testing"
@@ -317,3 +318,298 @@ func waitForExecs(t *testing.T, db *fakeQuerier, n int) []call {
 }
 
 var errBoom = errors.New("boom")
+
+// storedUser is a fully populated row, so a test can tell that every column made it
+// through the scan rather than just the one it asserts on.
+func storedUser(id int64, username string) tables.TelegramUser {
+	created := time.Date(2026, time.January, 2, 3, 4, 5, 0, time.UTC)
+
+	return tables.TelegramUser{
+		SoftDeleteModel:                   tables.SoftDeleteModel{ID: id, CreatedAt: created, UpdatedAt: created},
+		FirstName:                         "Ada",
+		LastName:                          "Lovelace",
+		Username:                          sql.NullString{String: username, Valid: username != ""},
+		LanguageCode:                      "en",
+		IsAdmin:                           true,
+		AcceptedTermsAndConditionsOn:      sql.NullTime{Time: created, Valid: true},
+		AcceptedTermsAndConditionsVersion: sql.NullString{String: "v1.0.0", Valid: true},
+	}
+}
+
+func TestNewTgUsersCache(t *testing.T) {
+	db := &fakeQuerier{}
+
+	// A long interval keeps the cleanup goroutine out of the way for the test's life.
+	cache := NewTgUsersCache(db, time.Hour, 4*24*time.Hour)
+
+	if cache.users == nil {
+		t.Error("NewTgUsersCache() left the users map nil")
+	}
+	if cache.staleThreshold != 4*24*time.Hour {
+		t.Errorf("staleThreshold = %s, want 96h", cache.staleThreshold)
+	}
+	if cache.dbPool != db {
+		t.Error("NewTgUsersCache() did not keep the querier it was given")
+	}
+}
+
+func TestGetByUsernameStripsTheAtPrefix(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{name: "with the @ prefix", input: "@ada"},
+		{name: "without the prefix", input: "ada"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db := &fakeQuerier{}
+			db.queueUsers(storedUser(42, "ada"))
+			cache := newTestCache(db)
+
+			user, err := cache.GetByUsername(tt.input)
+			if err != nil {
+				t.Fatalf("GetByUsername() unexpected error: %v", err)
+			}
+
+			queries := db.recordedQueries()
+			if len(queries) != 1 {
+				t.Fatalf("GetByUsername() ran %d queries, want 1", len(queries))
+			}
+			// Telegram hands out usernames with an @; the column stores them without.
+			if got := queries[0].args[0]; got != "ada" {
+				t.Errorf("query bound username %q, want %q", got, "ada")
+			}
+			if !strings.Contains(queries[0].sql, "deleted_at is null") {
+				t.Errorf("query %q does not exclude soft-deleted rows", queries[0].sql)
+			}
+
+			if user.ID != 42 || user.FirstName != "Ada" || user.LanguageCode != "en" || !user.IsAdmin {
+				t.Errorf("GetByUsername() = %+v, want the stored row", user)
+			}
+			if !user.AcceptedTermsAndConditionsOn.Valid {
+				t.Error("the accepted-on timestamp did not survive the scan")
+			}
+
+			cache.mu.RLock()
+			defer cache.mu.RUnlock()
+			if _, ok := cache.users[42]; !ok {
+				t.Error("GetByUsername() returned before the user landed in the cache")
+			}
+		})
+	}
+}
+
+func TestGetByUsernameNotFound(t *testing.T) {
+	db := &fakeQuerier{}
+	cache := newTestCache(db)
+
+	user, err := cache.GetByUsername("@nobody")
+
+	if !errors.Is(err, pgx.ErrNoRows) {
+		t.Errorf("GetByUsername() error = %v, want pgx.ErrNoRows", err)
+	}
+	if user != nil {
+		t.Error("GetByUsername() returned a user alongside the error")
+	}
+
+	cache.mu.RLock()
+	defer cache.mu.RUnlock()
+	if len(cache.users) != 0 {
+		t.Error("GetByUsername() cached something for a user that does not exist")
+	}
+}
+
+func TestGetByUsernamePropagatesQueryFailures(t *testing.T) {
+	db := &fakeQuerier{queryErr: errBoom}
+	cache := newTestCache(db)
+
+	if _, err := cache.GetByUsername("ada"); !errors.Is(err, errBoom) {
+		t.Errorf("GetByUsername() error = %v, want %v", err, errBoom)
+	}
+}
+
+func TestGetByUsernameReturnsACopy(t *testing.T) {
+	db := &fakeQuerier{}
+	db.queueUsers(storedUser(42, "ada"))
+	cache := newTestCache(db)
+
+	user, err := cache.GetByUsername("ada")
+	if err != nil {
+		t.Fatalf("GetByUsername() unexpected error: %v", err)
+	}
+
+	user.FirstName = "mutated by the caller"
+
+	cache.mu.RLock()
+	cached := cache.users[42]
+	cache.mu.RUnlock()
+
+	if cached.GetRaw().FirstName != "Ada" {
+		t.Error("mutating the returned user changed the cached one")
+	}
+}
+
+func TestGetByIDServesFromCacheWithoutQuerying(t *testing.T) {
+	db := &fakeQuerier{}
+	cache := newTestCache(db)
+
+	stored := storedUser(42, "ada")
+	cache.cacheUser(42, user_container.NewTelegramUserContainer(&stored))
+
+	user, err := cache.GetByID(42)
+	if err != nil {
+		t.Fatalf("GetByID() unexpected error: %v", err)
+	}
+
+	if user.FirstName != "Ada" {
+		t.Errorf("GetByID() = %+v, want the cached user", user)
+	}
+	if queries := db.recordedQueries(); len(queries) != 0 {
+		t.Errorf("GetByID() ran %d queries for a cached user, want 0", len(queries))
+	}
+
+	// GetRaw hands back a copy, so the caller cannot reach into the container.
+	user.FirstName = "mutated by the caller"
+	if again, _ := cache.GetByID(42); again.FirstName != "Ada" {
+		t.Error("mutating the returned user changed the cached one")
+	}
+}
+
+func TestGetByIDFallsBackToTheDatabase(t *testing.T) {
+	db := &fakeQuerier{}
+	db.queueUsers(storedUser(42, "ada"))
+	cache := newTestCache(db)
+
+	user, err := cache.GetByID(42)
+	if err != nil {
+		t.Fatalf("GetByID() unexpected error: %v", err)
+	}
+
+	queries := db.recordedQueries()
+	if len(queries) != 1 {
+		t.Fatalf("GetByID() ran %d queries, want 1", len(queries))
+	}
+	if got := queries[0].args[0]; got != int64(42) {
+		t.Errorf("query bound id %v, want 42", got)
+	}
+	if !strings.Contains(queries[0].sql, "deleted_at is null") {
+		t.Errorf("query %q does not exclude soft-deleted rows", queries[0].sql)
+	}
+	if user.ID != 42 {
+		t.Errorf("GetByID() = %+v, want the stored row", user)
+	}
+
+	// Cached on the way out, so a second call is served from memory.
+	if _, err := cache.GetByID(42); err != nil {
+		t.Fatalf("GetByID() unexpected error: %v", err)
+	}
+	if queries := db.recordedQueries(); len(queries) != 1 {
+		t.Errorf("the second GetByID() queried again, total %d", len(queries))
+	}
+}
+
+func TestGetByIDNotFound(t *testing.T) {
+	db := &fakeQuerier{}
+	cache := newTestCache(db)
+
+	user, err := cache.GetByID(42)
+
+	if !errors.Is(err, pgx.ErrNoRows) {
+		t.Errorf("GetByID() error = %v, want pgx.ErrNoRows", err)
+	}
+	if user != nil {
+		t.Error("GetByID() returned a user alongside the error")
+	}
+}
+
+func TestGetServesAnExistingRowWithoutInserting(t *testing.T) {
+	db := &fakeQuerier{}
+	db.queueUsers(storedUser(42, "ada"))
+	cache := newTestCache(db)
+
+	user, err := cache.Get(&gotgbot.User{
+		Id:           42,
+		FirstName:    "Ada",
+		LastName:     "Lovelace",
+		Username:     "ada",
+		LanguageCode: "en",
+	})
+	if err != nil {
+		t.Fatalf("Get() unexpected error: %v", err)
+	}
+
+	if user.ID != 42 || !user.IsAdmin {
+		t.Errorf("Get() = %+v, want the stored row", user)
+	}
+	// The row already existed, so nothing is written.
+	if execs := db.recordedExecs(); len(execs) != 0 {
+		t.Errorf("Get() wrote %d times for an existing user, want 0", len(execs))
+	}
+
+	cache.mu.RLock()
+	defer cache.mu.RUnlock()
+	if _, ok := cache.users[42]; !ok {
+		t.Error("Get() returned before the user landed in the cache")
+	}
+}
+
+func TestGetPropagatesQueryFailures(t *testing.T) {
+	db := &fakeQuerier{queryErr: errBoom}
+	cache := newTestCache(db)
+
+	if _, err := cache.Get(&gotgbot.User{Id: 42, FirstName: "Ada"}); !errors.Is(err, errBoom) {
+		t.Errorf("Get() error = %v, want %v", err, errBoom)
+	}
+	// A failed lookup is not a miss, so it must not insert.
+	if execs := db.recordedExecs(); len(execs) != 0 {
+		t.Errorf("Get() wrote %d times after a failed query, want 0", len(execs))
+	}
+}
+
+func TestGetDeferredUpdateWritesNullForARemovedUsername(t *testing.T) {
+	db := &fakeQuerier{}
+	cache := newTestCache(db)
+
+	cached := storedUser(42, "ada")
+	cache.cacheUser(42, user_container.NewTelegramUserContainer(&cached))
+
+	// The user dropped their username: Telegram sends an empty string, which has to
+	// reach the column as NULL rather than "".
+	if _, err := cache.Get(&gotgbot.User{Id: 42, FirstName: "Ada", LastName: "Lovelace", LanguageCode: "en"}); err != nil {
+		t.Fatalf("Get() unexpected error: %v", err)
+	}
+
+	execs := waitForExecs(t, db, 1)
+	if !strings.Contains(execs[0].sql, "username = NULL") {
+		t.Errorf("deferred write ran %q, want the NULL-username update", execs[0].sql)
+	}
+	// The NULL branch binds one fewer argument: first_name, last_name, language_code, id.
+	if len(execs[0].args) != 4 {
+		t.Fatalf("update bound %d args, want 4", len(execs[0].args))
+	}
+	if got := execs[0].args[3]; got != int64(42) {
+		t.Errorf("update bound id %v, want 42", got)
+	}
+}
+
+func TestUserHasAcceptedTermsAndConditionsPropagatesWriteFailures(t *testing.T) {
+	db := &fakeQuerier{execErr: errBoom}
+	cache := newTestCache(db)
+
+	stored := storedUser(42, "ada")
+	cache.cacheUser(42, user_container.NewTelegramUserContainer(&stored))
+
+	if err := cache.UserHasAcceptedTermsAndConditions(42, "v2.0.0"); !errors.Is(err, errBoom) {
+		t.Fatalf("UserHasAcceptedTermsAndConditions() error = %v, want %v", err, errBoom)
+	}
+
+	// The cached container must not record an acceptance the database rejected.
+	cache.mu.RLock()
+	container := cache.users[42]
+	cache.mu.RUnlock()
+	if !container.GetRaw().MustAcceptTermsAndConditions("v2.0.0") {
+		t.Error("the cached user records an acceptance that never reached the database")
+	}
+}

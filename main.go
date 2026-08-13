@@ -15,6 +15,7 @@ import (
 	"github.com/execreate/go-telegram-bot-template/internals/bot"
 	"github.com/execreate/go-telegram-bot-template/internals/gin_server"
 	"github.com/execreate/go-telegram-bot-template/internals/logger"
+	"github.com/execreate/go-telegram-bot-template/locale"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
@@ -27,6 +28,10 @@ const (
 var supportedLanguages = []string{"en"}
 
 func main() {
+	// Parse the command line before anything reads a flag-backed value. The locale
+	// package registers --locale-path but deliberately leaves parsing to us.
+	locale.ParseFlags()
+
 	rootCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 

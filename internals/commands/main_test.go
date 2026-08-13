@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -88,9 +89,10 @@ func TestGetCommandsPublishesEveryPopulatedScope(t *testing.T) {
 	}
 }
 
-func TestGetCommandsSkipsEmptyScopes(t *testing.T) {
-	// Only two scopes are populated; the rest must not be published as empty lists,
-	// which would wipe whatever is already registered with Telegram.
+func TestGetCommandsPublishesEmptyScopesToClearThem(t *testing.T) {
+	// Only two scopes are populated. The other two are still published, as empty
+	// lists — that is what clears whatever Telegram currently holds for them, so
+	// deleting a key from the locale file actually removes the commands.
 	useLocaleFixture(t, map[string]string{
 		"en_commands.yaml": "all_private_chats:\n    hello: private hello\nall_group_chats:\n    hello: group hello\n",
 	})
@@ -100,23 +102,54 @@ func TestGetCommandsSkipsEmptyScopes(t *testing.T) {
 		t.Fatalf("GetCommands() unexpected error: %v", err)
 	}
 
-	if len(got) != 2 {
-		t.Fatalf("GetCommands() returned %d entries, want 2", len(got))
+	if len(got) != 4 {
+		t.Fatalf("GetCommands() returned %d entries, want all 4 global scopes", len(got))
 	}
-	if got[0].Opts.Scope.GetType() != (&gotgbot.BotCommandScopeAllPrivateChats{}).GetType() {
-		t.Errorf("first entry scope = %q, want all_private_chats", got[0].Opts.Scope.GetType())
+
+	wantCounts := []struct {
+		scope gotgbot.BotCommandScope
+		count int
+	}{
+		{&gotgbot.BotCommandScopeDefault{}, 0},
+		{&gotgbot.BotCommandScopeAllPrivateChats{}, 1},
+		{&gotgbot.BotCommandScopeAllGroupChats{}, 1},
+		{&gotgbot.BotCommandScopeAllChatAdministrators{}, 0},
 	}
-	if got[1].Opts.Scope.GetType() != (&gotgbot.BotCommandScopeAllGroupChats{}).GetType() {
-		t.Errorf("second entry scope = %q, want all_group_chats", got[1].Opts.Scope.GetType())
+
+	for i, want := range wantCounts {
+		if got[i].Opts.Scope.GetType() != want.scope.GetType() {
+			t.Errorf("entry %d scope = %q, want %q", i, got[i].Opts.Scope.GetType(), want.scope.GetType())
+		}
+		if len(got[i].Commands) != want.count {
+			t.Errorf("entry %d has %d commands, want %d", i, len(got[i].Commands), want.count)
+		}
+		// An unpopulated scope must send an empty list, never a nil one — gotgbot
+		// marshals nil as a missing field, which Telegram rejects.
+		if got[i].Commands == nil {
+			t.Errorf("entry %d commands are nil, want an empty slice", i)
+		}
 	}
 }
 
 func TestGetCommandsScopesAdminsAndOwnersToTheirChats(t *testing.T) {
 	useLocaleFixture(t, map[string]string{"en_commands.yaml": fullFixture})
 
-	admin := &tables.TelegramUser{SoftDeleteModel: tables.SoftDeleteModel{ID: 11}, IsAdmin: true}
-	owner := &tables.TelegramUser{SoftDeleteModel: tables.SoftDeleteModel{ID: 22}, IsOwner: true}
-	both := &tables.TelegramUser{SoftDeleteModel: tables.SoftDeleteModel{ID: 33}, IsAdmin: true, IsOwner: true}
+	admin := &tables.TelegramUser{
+		SoftDeleteModel: tables.SoftDeleteModel{ID: 11},
+		LanguageCode:    "en",
+		IsAdmin:         true,
+	}
+	owner := &tables.TelegramUser{
+		SoftDeleteModel: tables.SoftDeleteModel{ID: 22},
+		LanguageCode:    "de",
+		IsOwner:         true,
+	}
+	both := &tables.TelegramUser{
+		SoftDeleteModel: tables.SoftDeleteModel{ID: 33},
+		LanguageCode:    "en",
+		IsAdmin:         true,
+		IsOwner:         true,
+	}
 
 	got, err := GetCommands([]*tables.TelegramUser{admin, owner, both}, "en")
 	if err != nil {
@@ -131,14 +164,18 @@ func TestGetCommandsScopesAdminsAndOwnersToTheirChats(t *testing.T) {
 		t.Fatalf("GetCommands() returned %d per-user entries, want 4", len(perUser))
 	}
 
+	// Every entry carries the language the command texts were loaded for, not the
+	// user's own — the texts and the language tag have to agree, or Telegram would
+	// serve one language's descriptions under another's code.
 	wantPerUser := []struct {
 		chatID      int64
+		language    string
 		description string
 	}{
-		{11, "bot admin my_id"},
-		{22, "bot owner my_id"},
-		{33, "bot admin my_id"},
-		{33, "bot owner my_id"},
+		{11, "en", "bot admin my_id"},
+		{22, "en", "bot owner my_id"},
+		{33, "en", "bot admin my_id"},
+		{33, "en", "bot owner my_id"},
 	}
 
 	for i, want := range wantPerUser {
@@ -149,9 +186,28 @@ func TestGetCommandsScopesAdminsAndOwnersToTheirChats(t *testing.T) {
 		if scope.ChatId != want.chatID {
 			t.Errorf("per-user entry %d scoped to chat %d, want %d", i, scope.ChatId, want.chatID)
 		}
+		if perUser[i].Opts.LanguageCode != want.language {
+			t.Errorf("per-user entry %d language = %q, want %q", i, perUser[i].Opts.LanguageCode, want.language)
+		}
 		if got := commandMap(perUser[i].Commands)["my_id"]; got != want.description {
 			t.Errorf("per-user entry %d my_id = %q, want %q", i, got, want.description)
 		}
+	}
+}
+
+func TestGetCommandsForAUserWhoIsNeitherAdminNorOwner(t *testing.T) {
+	useLocaleFixture(t, map[string]string{"en_commands.yaml": fullFixture})
+
+	regular := &tables.TelegramUser{SoftDeleteModel: tables.SoftDeleteModel{ID: 11}, LanguageCode: "en"}
+
+	got, err := GetCommands([]*tables.TelegramUser{regular}, "en")
+	if err != nil {
+		t.Fatalf("GetCommands() unexpected error: %v", err)
+	}
+
+	// Only the four global scopes; a user with no role contributes no chat-scoped entry.
+	if len(got) != 4 {
+		t.Errorf("GetCommands() returned %d entries, want only the 4 global scopes", len(got))
 	}
 }
 
@@ -194,12 +250,9 @@ func TestGetUserCommands(t *testing.T) {
 		name string
 		user *tables.TelegramUser
 		want map[string]string
+		// wantErr is set for users the function refuses to build a command set for.
+		wantErr bool
 	}{
-		{
-			name: "regular user gets the default set",
-			user: &tables.TelegramUser{LanguageCode: "en"},
-			want: map[string]string{"hello": "default hello"},
-		},
 		{
 			name: "admin gets the bot_admin set",
 			user: &tables.TelegramUser{LanguageCode: "en", IsAdmin: true},
@@ -223,19 +276,37 @@ func TestGetUserCommands(t *testing.T) {
 		},
 		{
 			name: "unknown locale falls back to English",
-			user: &tables.TelegramUser{LanguageCode: "kl"},
-			want: map[string]string{"hello": "default hello"},
+			user: &tables.TelegramUser{LanguageCode: "kl", IsAdmin: true},
+			want: map[string]string{"hello": "bot admin hello", "my_id": "bot admin my_id"},
 		},
 		{
 			name: "empty locale falls back to English",
-			user: &tables.TelegramUser{},
-			want: map[string]string{"hello": "default hello"},
+			user: &tables.TelegramUser{IsAdmin: true},
+			want: map[string]string{"hello": "bot admin hello", "my_id": "bot admin my_id"},
+		},
+		{
+			// This function only builds role-scoped sets. A user with no role has no
+			// per-chat scope to reset, so the caller logs and skips.
+			name:    "a user with no role is an error",
+			user:    &tables.TelegramUser{LanguageCode: "en"},
+			wantErr: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cmds, err := GetUserCommands(tt.user)
+
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("GetUserCommands() = %v, want an error", cmds)
+				}
+				if !errors.Is(err, userCommandsNotFound) {
+					t.Errorf("GetUserCommands() error = %v, want userCommandsNotFound", err)
+				}
+				return
+			}
+
 			if err != nil {
 				t.Fatalf("GetUserCommands() unexpected error: %v", err)
 			}

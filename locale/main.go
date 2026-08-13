@@ -24,11 +24,22 @@ func init() {
 	localesConfig = viper.New()
 	flag.String("locale-path", "./locale", "path to the folder where locale files are located")
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
-	pflag.Parse()
-	err := localesConfig.BindPFlags(pflag.CommandLine)
-	if err != nil {
+
+	// Binding before the flags are parsed is fine: viper reads through to the flag, so
+	// it picks up whatever ParseFlags later sets, and falls back to the default until
+	// then. Parsing here instead would consume os.Args on import — which breaks any
+	// binary that owns its own flags, and swallows `go test`'s own flags (notably
+	// -test.coverprofile, leaving every importing package with an empty profile).
+	if err := localesConfig.BindPFlags(pflag.CommandLine); err != nil {
 		logger.Log.Fatal("failed to bind flags", zap.Error(err))
 	}
+}
+
+// ParseFlags parses the command line so --locale-path takes effect. Call it once from
+// main, before anything resolves a translation. Binaries that manage their own flags
+// can skip it and call SetPath instead.
+func ParseFlags() {
+	pflag.Parse()
 }
 
 // SetPath overrides the directory locale files are read from and drops the parsed

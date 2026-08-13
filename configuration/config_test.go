@@ -1,6 +1,7 @@
 package configuration
 
 import (
+	"os"
 	"strings"
 	"testing"
 )
@@ -121,5 +122,98 @@ func TestEnvOverridesAndTrimming(t *testing.T) {
 	}
 	if got := config.GetWebhookPath(); got != "123:ABC/webhook" {
 		t.Errorf("GetWebhookPath() = %q, want %q", got, "123:ABC/webhook")
+	}
+}
+
+func TestTrailingSeparatorTrimming(t *testing.T) {
+	staticWithSlash := "/srv/static" + string(os.PathSeparator)
+
+	t.Setenv("MY_BOT_WEBHOOK_DOMAIN", "https://bot.example.com/")
+	t.Setenv("MY_BOT_WEBAPP_DOMAIN", "https://app.example.com/")
+	t.Setenv("MY_BOT_STATIC_CONTENT_PATH", staticWithSlash)
+
+	config, err := Configure(nil)
+	if err != nil {
+		t.Fatalf("Configure() unexpected error: %v", err)
+	}
+
+	// All three are concatenated with a separator by their callers, so a trailing one
+	// here would produce a double separator in a URL or a path.
+	if got := config.GetWebhookDomain(); got != "https://bot.example.com" {
+		t.Errorf("GetWebhookDomain() = %q, want the trailing slash trimmed", got)
+	}
+	if got := config.GetWebAppDomain(); got != "https://app.example.com" {
+		t.Errorf("GetWebAppDomain() = %q, want the trailing slash trimmed", got)
+	}
+	if got := config.GetStaticContentPath(); got != "/srv/static" {
+		t.Errorf("GetStaticContentPath() = %q, want the trailing separator trimmed", got)
+	}
+}
+
+func TestTrimmingLeavesValuesWithoutATrailingSeparatorAlone(t *testing.T) {
+	t.Setenv("MY_BOT_WEBHOOK_DOMAIN", "https://bot.example.com")
+	t.Setenv("MY_BOT_WEBAPP_DOMAIN", "https://app.example.com")
+	t.Setenv("MY_BOT_STATIC_CONTENT_PATH", "./static")
+
+	config, err := Configure(nil)
+	if err != nil {
+		t.Fatalf("Configure() unexpected error: %v", err)
+	}
+
+	if got := config.GetWebhookDomain(); got != "https://bot.example.com" {
+		t.Errorf("GetWebhookDomain() = %q, want it unchanged", got)
+	}
+	if got := config.GetWebAppDomain(); got != "https://app.example.com" {
+		t.Errorf("GetWebAppDomain() = %q, want it unchanged", got)
+	}
+	if got := config.GetStaticContentPath(); got != "./static" {
+		t.Errorf("GetStaticContentPath() = %q, want it unchanged", got)
+	}
+
+	// Only one trailing separator is removed; the getters use CutSuffix, not a trim.
+	t.Setenv("MY_BOT_WEBHOOK_DOMAIN", "https://bot.example.com//")
+	config, err = Configure(nil)
+	if err != nil {
+		t.Fatalf("Configure() unexpected error: %v", err)
+	}
+	if got := config.GetWebhookDomain(); got != "https://bot.example.com/" {
+		t.Errorf("GetWebhookDomain() = %q, want exactly one slash removed", got)
+	}
+}
+
+func TestPassthroughGetters(t *testing.T) {
+	t.Setenv("MY_BOT_TOKEN", "123:ABC")
+	t.Setenv("MY_BOT_WEBHOOK_SECRET", "s3cret")
+	t.Setenv("MY_BOT_DB_DSN", "postgresql://user:pass@localhost:5432/my_db")
+	t.Setenv("MY_BOT_REDIS_ADDR", "localhost:6375")
+	t.Setenv("MY_BOT_REDIS_USER", "default")
+	t.Setenv("MY_BOT_REDIS_PASS", "password")
+	t.Setenv("MY_BOT_TERMS_AND_CONDITIONS_VERSION", "v9.9.9")
+
+	config, err := Configure(nil)
+	if err != nil {
+		t.Fatalf("Configure() unexpected error: %v", err)
+	}
+
+	tests := []struct {
+		name string
+		got  string
+		want string
+	}{
+		{"GetToken", config.GetToken(), "123:ABC"},
+		{"GetWebhookSecret", config.GetWebhookSecret(), "s3cret"},
+		{"GetDbDSN", config.GetDbDSN(), "postgresql://user:pass@localhost:5432/my_db"},
+		{"GetRedisAddr", config.GetRedisAddr(), "localhost:6375"},
+		{"GetRedisUsername", config.GetRedisUsername(), "default"},
+		{"GetRedisPassword", config.GetRedisPassword(), "password"},
+		{"GetTermsAndConditionsVersion", config.GetTermsAndConditionsVersion(), "v9.9.9"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.got != tt.want {
+				t.Errorf("%s() = %q, want %q", tt.name, tt.got, tt.want)
+			}
+		})
 	}
 }

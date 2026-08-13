@@ -17,7 +17,10 @@ type SlidingWindowRateLimiter struct {
 	conf     *SlidingWindowRateLimiterConfig
 	events   []time.Time
 	lastUsed time.Time
-	mu       sync.Mutex
+	// now reads the current time. It is a field rather than a direct call to time.Now
+	// so tests can drive the window forward without sleeping through it.
+	now func() time.Time
+	mu  sync.Mutex
 }
 
 func NewSlidingWindowRateLimiter(conf *SlidingWindowRateLimiterConfig) (*SlidingWindowRateLimiter, error) {
@@ -35,13 +38,14 @@ func NewSlidingWindowRateLimiter(conf *SlidingWindowRateLimiterConfig) (*Sliding
 		conf:     conf,
 		lastUsed: time.Now(),
 		events:   make([]time.Time, 0),
+		now:      time.Now,
 	}, nil
 }
 
 func (rl *SlidingWindowRateLimiter) IsStale(d time.Duration) bool {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
-	return time.Since(rl.lastUsed) > d
+	return rl.now().Sub(rl.lastUsed) > d
 }
 
 func (rl *SlidingWindowRateLimiter) Wait(ctx context.Context) error {
@@ -50,7 +54,7 @@ func (rl *SlidingWindowRateLimiter) Wait(ctx context.Context) error {
 	// the stale-cleanup goroutine (IsStale) for up to a full window.
 	rl.mu.Lock()
 
-	now := time.Now()
+	now := rl.now()
 	rl.lastUsed = now
 
 	windowStart := now.Add(-1 * rl.conf.Window)

@@ -152,6 +152,41 @@ Roll back the last migration:
 goose -dir ./database/migrations/postgres postgres "<DSN>" down
 ```
 
+## Testing
+
+```shell
+go test ./... -race
+```
+
+The default suite is hermetic — no database, no network, no Docker — so it runs anywhere `go test` does. Assertions are
+written with the standard library rather than an assertion framework.
+
+Database-backed tests live behind the `integration` build tag. They start a throwaway PostgreSQL 17 container with
+[testcontainers-go](https://golang.testcontainers.org/), apply `database/migrations/postgres` with goose, and exercise
+the user cache against the real schema:
+
+```shell
+go test -tags=integration ./... -race
+```
+
+A working Docker daemon is required. `-short` skips the suite without starting anything, which is what you want when
+Docker is unavailable:
+
+```shell
+go test -tags=integration ./... -short
+```
+
+If you use a non-default Docker socket — [colima](https://github.com/abiosoft/colima), Rancher Desktop, rootless
+Docker — point testcontainers at it first:
+
+```shell
+export DOCKER_HOST="unix://$HOME/.colima/default/docker.sock"
+export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock
+```
+
+`testcontainers-go` and `goose` are pulled in only by tagged test files, but Go has no test-only dependency scope, so
+they appear in `go.mod` like any other requirement.
+
 ## Docker
 
 ### Build the image
@@ -197,7 +232,9 @@ startup, but the connection is only opened when you build a gotgbot conversation
 
 The locale is picked per user from Telegram's `language_code` — `MiscContextHandler` loads the matching texts into
 `ctx.Data["texts"]`, and the WebApp server does the same from the validated initData. A missing locale file falls back to
-`en` (`locale.FallbackLanguage`); `locale.SetPath` overrides the directory at runtime and drops the parsed-locale caches.
+`en` (`locale.FallbackLanguage`). The `--locale-path` flag is registered by the `locale` package but parsed by
+`locale.ParseFlags()`, which `main.go` calls first thing — a binary that owns its own flag handling can skip it and call
+`locale.SetPath` instead, which also drops the parsed-locale caches.
 
 Command descriptions come from `<lang>_commands.yaml`, keyed by the scope they are published to. Every language in
 `supportedLanguages` is published on startup, so Telegram serves each user the descriptions matching their

@@ -133,7 +133,7 @@ func GetCommands(
 				&gotgbot.BotCommandScopeChat{
 					ChatId: usr.ID,
 				},
-				usr.LanguageCode,
+				language,
 			))
 		}
 		if usr.IsOwner {
@@ -142,7 +142,7 @@ func GetCommands(
 				&gotgbot.BotCommandScopeChat{
 					ChatId: usr.ID,
 				},
-				usr.LanguageCode,
+				language,
 			))
 		}
 	}

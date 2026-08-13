@@ -18,7 +18,10 @@ type TokenBucketRateLimiterConfig struct {
 type TokenBucketRateLimiter struct {
 	limiter  *rate.Limiter
 	lastUsed time.Time
-	mu       sync.Mutex
+	// now reads the current time. It is a field rather than a direct call to time.Now
+	// so tests can probe the staleness boundary without sleeping.
+	now func() time.Time
+	mu  sync.Mutex
 }
 
 func NewTokenBucketRateLimiter(conf *TokenBucketRateLimiterConfig) (*TokenBucketRateLimiter, error) {
@@ -37,18 +40,19 @@ func NewTokenBucketRateLimiter(conf *TokenBucketRateLimiterConfig) (*TokenBucket
 	return &TokenBucketRateLimiter{
 		limiter:  rate.NewLimiter(conf.Limit, conf.Burst),
 		lastUsed: time.Now(),
+		now:      time.Now,
 	}, nil
 }
 
 func (c *TokenBucketRateLimiter) IsStale(d time.Duration) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return time.Since(c.lastUsed) > d
+	return c.now().Sub(c.lastUsed) > d
 }
 
 func (c *TokenBucketRateLimiter) Wait(ctx context.Context) error {
 	c.mu.Lock()
-	c.lastUsed = time.Now()
+	c.lastUsed = c.now()
 	c.mu.Unlock()
 	// The lock is released before waiting: rate.Limiter.Wait can block, and we
 	// must not hold the mutex (which IsStale also needs) for that duration.
