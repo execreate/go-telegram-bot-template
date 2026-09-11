@@ -114,8 +114,11 @@ func main() {
 	logger.Log.Info("Received shutdown signal, shutting down.")
 
 	// clean up everything
-	go myBot.CleanUp(_shutdownPeriod)
-	go logger.Flush()
+	done := make(chan struct{})
+	go func() {
+		myBot.CleanUp(_shutdownPeriod)
+		close(done)
+	}()
 
 	// graceful shutdown period setup
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), _shutdownPeriod)
@@ -123,6 +126,8 @@ func main() {
 
 	err = server.Shutdown(shutdownCtx)
 	stopOngoingGracefully()
+
+	<-done
 
 	if err != nil {
 		logger.Log.Info(
