@@ -213,18 +213,24 @@ func (b *MyBot) Run() error {
 
 // CleanUp cleans up bot resources
 func (b *MyBot) CleanUp(shutDownPeriod time.Duration) {
-	b.DB.Close()
 	if _, err := b.bot.DeleteWebhook(&gotgbot.DeleteWebhookOpts{
 		DropPendingUpdates: false,
 		RequestOpts:        &gotgbot.RequestOpts{Timeout: shutDownPeriod},
 	}); err != nil {
 		logger.Log.Warn("failed to delete the webhook", zap.Error(err))
 	}
-	b.dispatcher.Stop()
-	err := b.updater.Stop()
-	if err != nil {
+
+	// b.dispatcher.Stop() was removed: updater.Stop() already calls it internally,
+	// and Dispatcher.Stop() is not safe to call twice — it closes an internal
+	// channel, so calling it again here panics with "close of closed channel".
+	if err := b.updater.Stop(); err != nil {
 		logger.Log.Warn("failed to stop the updater", zap.Error(err))
 	}
+
+	// Close the DB only after the updater has stopped, so in-flight handlers
+	// don't hit a closed pool.
+	b.DB.Close()
+
 	logger.Log.Info("Bot has stopped, webhook deleted")
 }
 
