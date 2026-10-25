@@ -3,7 +3,7 @@ module github.com/execreate/go-telegram-bot-template
 go 1.26.0
 
 require (
-	github.com/PaulSonOfLars/gotgbot/v2 v2.0.0-rc.36
+	github.com/PaulSonOfLars/gotgbot/v2 v2.0.0-rc.37
 	github.com/gin-gonic/gin v1.12.0
 	github.com/goccy/go-json v0.11.2
 	github.com/jackc/pgx/v5 v5.11.0
