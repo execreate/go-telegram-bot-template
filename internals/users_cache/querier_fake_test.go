@@ -121,7 +121,13 @@ func userValues(u *tables.TelegramUser) []any {
 
 // userRows is a pgx.Rows yielding at most one telegram_users row. With no user it
 // yields nothing, which pgx.CollectOneRow turns into pgx.ErrNoRows.
+//
+// Embedding the interface keeps it compiling whatever methods pgx adds to Rows. Only
+// what pgx.CollectOneRow and pgx.RowToStructByName call is implemented; any other call
+// hits the nil embedded value and panics, failing the test loudly instead of silently.
 type userRows struct {
+	pgx.Rows
+
 	user     *tables.TelegramUser
 	consumed bool
 	err      error
@@ -130,8 +136,6 @@ type userRows struct {
 func (r *userRows) Close() {}
 
 func (r *userRows) Err() error { return r.err }
-
-func (r *userRows) CommandTag() pgconn.CommandTag { return pgconn.CommandTag{} }
 
 func (r *userRows) FieldDescriptions() []pgconn.FieldDescription {
 	descriptions := make([]pgconn.FieldDescription, 0, len(userColumns))
@@ -179,22 +183,5 @@ func (r *userRows) Scan(dest ...any) error {
 	return nil
 }
 
-func (r *userRows) Values() ([]any, error) {
-	if r.err != nil {
-		return nil, r.err
-	}
-	if r.user == nil {
-		return nil, pgx.ErrNoRows
-	}
-	return userValues(r.user), nil
-}
-
-func (r *userRows) RawValues() [][]byte { return nil }
-
-func (r *userRows) Conn() *pgx.Conn { return nil }
-
-// compile-time checks that the fakes still satisfy what the cache expects.
-var (
-	_ Querier  = (*fakeQuerier)(nil)
-	_ pgx.Rows = (*userRows)(nil)
-)
+// compile-time check that the fake still satisfies what the cache expects.
+var _ Querier = (*fakeQuerier)(nil)

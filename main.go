@@ -20,9 +20,12 @@ import (
 	"go.uber.org/zap"
 )
 
+// The worst-case shutdown takes _shutdownPeriod + _shutdownHardPeriod. Keep the sum
+// below the orchestrator's grace period (Docker's default is 10s, Kubernetes' 30s),
+// or the process is SIGKILLed mid-drain.
 const (
-	_shutdownPeriod     = 15 * time.Second
-	_shutdownHardPeriod = 3 * time.Second
+	_shutdownPeriod     = 7 * time.Second
+	_shutdownHardPeriod = 2 * time.Second
 )
 
 var supportedLanguages = []string{"en"}
@@ -96,10 +99,12 @@ func main() {
 	// Ensure in-flight requests aren't canceled immediately on SIGTERM
 	ongoingCtx, stopOngoingGracefully := context.WithCancel(context.Background())
 	server := srv.GetServer(ongoingCtx)
+
+	serverErr := make(chan error, 1)
 	go func() {
 		logger.Log.Info("Gin server starting")
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			logger.Log.Panic("unexpected error!", zap.Error(err))
+			serverErr <- err
 		}
 	}()
 
@@ -109,17 +114,26 @@ func main() {
 	}
 
 	// wait for shutdown signal
-	<-rootCtx.Done()
+	var fatalErr error
+	select {
+	case <-rootCtx.Done():
+		logger.Log.Info("Received shutdown signal, shutting down.")
+	case fatalErr = <-serverErr:
+		logger.Log.Error("Web app server failed, shutting down.", zap.Error(fatalErr))
+	}
+	// Restore default signal handling, so a second signal kills the process outright.
 	stop()
-	logger.Log.Info("Received shutdown signal, shutting down.")
-
-	// clean up everything
-	go myBot.CleanUp(_shutdownPeriod)
-	go logger.Flush()
 
 	// graceful shutdown period setup
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), _shutdownPeriod)
 	defer cancel()
+
+	// The bot and the web app server drain in parallel against the same deadline.
+	botStopped := make(chan struct{})
+	go func() {
+		defer close(botStopped)
+		myBot.CleanUp()
+	}()
 
 	err = server.Shutdown(shutdownCtx)
 	stopOngoingGracefully()
@@ -132,5 +146,14 @@ func main() {
 		time.Sleep(_shutdownHardPeriod)
 	}
 
+	select {
+	case <-botStopped:
+	case <-shutdownCtx.Done():
+		logger.Log.Warn("Timed out waiting for in-flight bot updates to finish.")
+	}
+
+	if fatalErr != nil {
+		logger.Log.Fatal("Shut down after a web app server failure.", zap.Error(fatalErr))
+	}
 	logger.Log.Info("Graceful shutdown complete.")
 }

@@ -16,7 +16,9 @@ out of the box.
 - **Localization** — YAML-based i18n; per-user locale from Telegram's `language_code`, with per-scope command
   descriptions published for every supported language
 - **Structured logging** — Zap logger with slog bridge
-- **Graceful shutdown** — grace period for in-flight requests
+- **Graceful shutdown** — on SIGINT/SIGTERM, drains in-flight bot updates and WebApp requests before closing the DB
+  pool, within a 9s budget that fits Docker's default stop timeout (`_shutdownPeriod` in `main.go`). The webhook stays
+  registered, so rolling deploys don't lose updates
 - **Docker** — multi-stage, cross-compilable build producing a minimal scratch image; Docker Compose dev stack
 - **ngrok integration** — config template for exposing webhook and WebApp locally
 

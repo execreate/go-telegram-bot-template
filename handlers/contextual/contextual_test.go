@@ -155,17 +155,17 @@ func (s *stubQuerier) Exec(context.Context, string, ...any) (pgconn.CommandTag, 
 }
 
 // emptyRows yields nothing, which pgx.CollectOneRow turns into pgx.ErrNoRows.
-type emptyRows struct{}
+//
+// Embedding the interface keeps it compiling whatever methods pgx adds to Rows. Only
+// what CollectOneRow calls on an empty result is implemented; any other call hits the
+// nil embedded value and panics, failing the test loudly instead of silently.
+type emptyRows struct {
+	pgx.Rows
+}
 
-func (r *emptyRows) Close()                                       {}
-func (r *emptyRows) Err() error                                   { return nil }
-func (r *emptyRows) CommandTag() pgconn.CommandTag                { return pgconn.CommandTag{} }
-func (r *emptyRows) FieldDescriptions() []pgconn.FieldDescription { return nil }
-func (r *emptyRows) Next() bool                                   { return false }
-func (r *emptyRows) Scan(...any) error                            { return pgx.ErrNoRows }
-func (r *emptyRows) Values() ([]any, error)                       { return nil, pgx.ErrNoRows }
-func (r *emptyRows) RawValues() [][]byte                          { return nil }
-func (r *emptyRows) Conn() *pgx.Conn                              { return nil }
+func (r *emptyRows) Close()     {}
+func (r *emptyRows) Err() error { return nil }
+func (r *emptyRows) Next() bool { return false }
 
 func TestUserContextHandlerCheckUpdate(t *testing.T) {
 	handler := NewUserContextHandler(nil)

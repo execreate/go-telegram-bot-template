@@ -211,21 +211,22 @@ func (b *MyBot) Run() error {
 	return nil
 }
 
-// CleanUp cleans up bot resources
-func (b *MyBot) CleanUp(shutDownPeriod time.Duration) {
-	b.DB.Close()
-	if _, err := b.bot.DeleteWebhook(&gotgbot.DeleteWebhookOpts{
-		DropPendingUpdates: false,
-		RequestOpts:        &gotgbot.RequestOpts{Timeout: shutDownPeriod},
-	}); err != nil {
-		logger.Log.Warn("failed to delete the webhook", zap.Error(err))
-	}
-	b.dispatcher.Stop()
-	err := b.updater.Stop()
-	if err != nil {
+// CleanUp stops taking updates, waits for the in-flight ones to finish, and only then
+// closes the database pool the handlers depend on. It blocks until all of that is done,
+// so callers bound it with their own deadline.
+//
+// The webhook is deliberately left registered with Telegram: during a rolling deploy
+// the new instance has already set it, and deleting it here would cut the bot off.
+// While no instance is up, Telegram queues the updates and retries delivery.
+func (b *MyBot) CleanUp() {
+	// Updater.Stop shuts the webhook server, closes the update channel and waits for
+	// the dispatcher to drain. It calls Dispatcher.Stop itself; calling that a second
+	// time panics on closing the dispatcher's limiter channel twice.
+	if err := b.updater.Stop(); err != nil {
 		logger.Log.Warn("failed to stop the updater", zap.Error(err))
 	}
-	logger.Log.Info("Bot has stopped, webhook deleted")
+	b.DB.Close()
+	logger.Log.Info("Bot has stopped")
 }
 
 // GetUsername returns the bot username
