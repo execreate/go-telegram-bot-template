@@ -5,7 +5,7 @@ go 1.26.0
 require (
 	github.com/PaulSonOfLars/gotgbot/v2 v2.0.0-rc.37
 	github.com/gin-gonic/gin v1.12.0
-	github.com/goccy/go-json v0.11.2
+	github.com/goccy/go-json v0.12.0
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/pressly/goose/v3 v3.29.0
 	github.com/redis/go-redis/v9 v9.23.0
